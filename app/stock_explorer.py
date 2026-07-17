@@ -12,6 +12,13 @@ from PySide6.QtWidgets import (
 from services.stock_service import get_stock_data
 from services.fundamental_service import calculate_roce
 
+from utils.formatter import (
+    format_price,
+    format_market_cap,
+    format_percentage,
+    format_number,
+)
+
 
 class StockExplorer(QWidget):
 
@@ -24,13 +31,16 @@ class StockExplorer(QWidget):
         title.setStyleSheet("font-size:28px;font-weight:bold;")
         main_layout.addWidget(title)
 
-        # -----------------------------
-        # Search Bar
-        # -----------------------------
+        # ---------------------------------------------------
+        # Search
+        # ---------------------------------------------------
+
         search_layout = QHBoxLayout()
 
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("Enter NSE Symbol (Example: INFY)")
+        self.search_box.setPlaceholderText(
+            "Enter NSE Symbol (Example: INFY)"
+        )
 
         self.search_button = QPushButton("Search")
         self.search_button.clicked.connect(self.search_stock)
@@ -40,10 +50,13 @@ class StockExplorer(QWidget):
 
         main_layout.addLayout(search_layout)
 
-        # -----------------------------
+        # ---------------------------------------------------
         # Company Information
-        # -----------------------------
+        # ---------------------------------------------------
+
         company = QFrame()
+        company.setFrameShape(QFrame.StyledPanel)
+
         company_layout = QGridLayout(company)
 
         company_layout.addWidget(QLabel("Company Name"), 0, 0)
@@ -68,10 +81,13 @@ class StockExplorer(QWidget):
 
         main_layout.addWidget(company)
 
-        # -----------------------------
-        # Financial Ratios
-        # -----------------------------
+        # ---------------------------------------------------
+        # Ratios
+        # ---------------------------------------------------
+
         ratios = QFrame()
+        ratios.setFrameShape(QFrame.StyledPanel)
+
         ratio_layout = QGridLayout(ratios)
 
         ratio_layout.addWidget(QLabel("PE"), 0, 0)
@@ -97,7 +113,10 @@ class StockExplorer(QWidget):
         main_layout.addWidget(ratios)
 
         self.score = QLabel("Alpha Score : -- /100")
-        self.score.setStyleSheet("font-size:22px;font-weight:bold;")
+        self.score.setStyleSheet(
+            "font-size:22px;font-weight:bold;"
+        )
+
         main_layout.addWidget(self.score)
 
         main_layout.addStretch()
@@ -116,77 +135,58 @@ class StockExplorer(QWidget):
             self.name_label.setText("Stock Not Found")
             return
 
-        # -----------------------------
-        # Company Details
-        # -----------------------------
+        # Company
+
         self.name_label.setText(str(data.get("name", "N/A")))
         self.sector_label.setText(str(data.get("sector", "N/A")))
         self.industry_label.setText(str(data.get("industry", "N/A")))
 
-        # -----------------------------
-        # Market Cap
-        # -----------------------------
-        market_cap = data.get("market_cap")
-
-        if isinstance(market_cap, (int, float)):
-            self.marketcap_label.setText(f"{market_cap:,}")
-        else:
-            self.marketcap_label.setText("N/A")
-
-        # -----------------------------
         # Price
-        # -----------------------------
-        price = data.get("price")
 
-        if isinstance(price, (int, float)):
-            self.price_label.setText(f"₹ {price:,.2f}")
-        else:
-            self.price_label.setText("N/A")
+        self.price_label.setText(
+            format_price(data.get("price"))
+        )
 
-        # -----------------------------
+        # Market Cap
+
+        self.marketcap_label.setText(
+            format_market_cap(data.get("market_cap"))
+        )
+
         # PE
-        # -----------------------------
-        pe = data.get("pe")
 
-        if isinstance(pe, (int, float)):
-            self.pe_label.setText(f"{pe:.2f}")
-        else:
-            self.pe_label.setText("N/A")
+        self.pe_label.setText(
+            format_number(data.get("pe"))
+        )
 
-        # -----------------------------
         # PB
-        # -----------------------------
-        pb = data.get("pb")
 
-        if isinstance(pb, (int, float)):
-            self.pb_label.setText(f"{pb:.2f}")
-        else:
-            self.pb_label.setText("N/A")
+        self.pb_label.setText(
+            format_number(data.get("pb"))
+        )
 
-        # -----------------------------
         # ROE
-        # -----------------------------
-        roe = data.get("roe")
 
-        if isinstance(roe, (int, float)):
-            self.roe_label.setText(f"{roe * 100:.2f} %")
-        else:
-            self.roe_label.setText("N/A")
+        self.roe_label.setText(
+            format_percentage(
+                data.get("roe"),
+                multiply=True,
+            )
+        )
 
-        # -----------------------------
         # ROCE
-        # -----------------------------
+
         if roce is not None:
-            self.roce_label.setText(f"{roce:.2f} %")
+            self.roce_label.setText(
+                format_percentage(roce)
+            )
         else:
             self.roce_label.setText("N/A")
 
-        # -----------------------------
         # Debt / Equity
-        # -----------------------------
-        de = data.get("debt_equity")
 
-        if isinstance(de, (int, float)):
-            self.de_label.setText(f"{de:.2f}")
-        else:
-            self.de_label.setText("N/A")
+        self.de_label.setText(
+            format_number(
+                data.get("debt_equity")
+            )
+        )
