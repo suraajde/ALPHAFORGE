@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from services.stock_service import get_stock_data
+from services.fundamental_service import calculate_roce
 
 
 class StockExplorer(QWidget):
@@ -23,7 +24,9 @@ class StockExplorer(QWidget):
         title.setStyleSheet("font-size:28px;font-weight:bold;")
         main_layout.addWidget(title)
 
+        # -----------------------------
         # Search Bar
+        # -----------------------------
         search_layout = QHBoxLayout()
 
         self.search_box = QLineEdit()
@@ -37,7 +40,9 @@ class StockExplorer(QWidget):
 
         main_layout.addLayout(search_layout)
 
+        # -----------------------------
         # Company Information
+        # -----------------------------
         company = QFrame()
         company_layout = QGridLayout(company)
 
@@ -63,7 +68,9 @@ class StockExplorer(QWidget):
 
         main_layout.addWidget(company)
 
+        # -----------------------------
         # Financial Ratios
+        # -----------------------------
         ratios = QFrame()
         ratio_layout = QGridLayout(ratios)
 
@@ -80,10 +87,10 @@ class StockExplorer(QWidget):
         ratio_layout.addWidget(self.roe_label, 2, 1)
 
         ratio_layout.addWidget(QLabel("ROCE"), 3, 0)
-        self.roce_label = QLabel("Coming Soon")
+        self.roce_label = QLabel("--")
         ratio_layout.addWidget(self.roce_label, 3, 1)
 
-        ratio_layout.addWidget(QLabel("Debt/Equity"), 4, 0)
+        ratio_layout.addWidget(QLabel("Debt / Equity"), 4, 0)
         self.de_label = QLabel("--")
         ratio_layout.addWidget(self.de_label, 4, 1)
 
@@ -99,17 +106,26 @@ class StockExplorer(QWidget):
 
         symbol = self.search_box.text().strip()
 
+        if not symbol:
+            return
+
         data = get_stock_data(symbol)
+        roce = calculate_roce(symbol)
 
         if "error" in data:
             self.name_label.setText("Stock Not Found")
             return
 
-        self.name_label.setText(str(data["name"]))
-        self.sector_label.setText(str(data["sector"]))
-        self.industry_label.setText(str(data["industry"]))
+        # -----------------------------
+        # Company Details
+        # -----------------------------
+        self.name_label.setText(str(data.get("name", "N/A")))
+        self.sector_label.setText(str(data.get("sector", "N/A")))
+        self.industry_label.setText(str(data.get("industry", "N/A")))
 
+        # -----------------------------
         # Market Cap
+        # -----------------------------
         market_cap = data.get("market_cap")
 
         if isinstance(market_cap, (int, float)):
@@ -117,11 +133,60 @@ class StockExplorer(QWidget):
         else:
             self.marketcap_label.setText("N/A")
 
+        # -----------------------------
         # Price
-        self.price_label.setText(str(data["price"]))
+        # -----------------------------
+        price = data.get("price")
 
-        # Ratios
-        self.pe_label.setText(str(data["pe"]))
-        self.pb_label.setText(str(data["pb"]))
-        self.roe_label.setText(str(data["roe"]))
-        self.de_label.setText(str(data["debt_equity"]))
+        if isinstance(price, (int, float)):
+            self.price_label.setText(f"₹ {price:,.2f}")
+        else:
+            self.price_label.setText("N/A")
+
+        # -----------------------------
+        # PE
+        # -----------------------------
+        pe = data.get("pe")
+
+        if isinstance(pe, (int, float)):
+            self.pe_label.setText(f"{pe:.2f}")
+        else:
+            self.pe_label.setText("N/A")
+
+        # -----------------------------
+        # PB
+        # -----------------------------
+        pb = data.get("pb")
+
+        if isinstance(pb, (int, float)):
+            self.pb_label.setText(f"{pb:.2f}")
+        else:
+            self.pb_label.setText("N/A")
+
+        # -----------------------------
+        # ROE
+        # -----------------------------
+        roe = data.get("roe")
+
+        if isinstance(roe, (int, float)):
+            self.roe_label.setText(f"{roe * 100:.2f} %")
+        else:
+            self.roe_label.setText("N/A")
+
+        # -----------------------------
+        # ROCE
+        # -----------------------------
+        if roce is not None:
+            self.roce_label.setText(f"{roce:.2f} %")
+        else:
+            self.roce_label.setText("N/A")
+
+        # -----------------------------
+        # Debt / Equity
+        # -----------------------------
+        de = data.get("debt_equity")
+
+        if isinstance(de, (int, float)):
+            self.de_label.setText(f"{de:.2f}")
+        else:
+            self.de_label.setText("N/A")
