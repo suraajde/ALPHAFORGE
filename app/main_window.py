@@ -2,16 +2,12 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
     QHBoxLayout,
-    QStatusBar,
     QStackedWidget,
 )
 
-from app.sidebar import Sidebar
-from app.dashboard import Dashboard
-from app.stock_explorer import StockExplorer
-
-from core.theme import APP_STYLE
-from core.version import APP_NAME, APP_VERSION
+from app.screens.sidebar import Sidebar
+from app.screens.dashboard import Dashboard
+from app.screens.stock_explorer import StockExplorer
 
 
 class MainWindow(QMainWindow):
@@ -19,39 +15,39 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle(APP_NAME)
-        self.resize(1400, 900)
-        self.setStyleSheet(APP_STYLE)
+        self.setWindowTitle("AlphaForge")
+        self.resize(1600, 900)
 
         central = QWidget()
+        self.setCentralWidget(central)
+
         layout = QHBoxLayout(central)
+
+        # ---------------- Sidebar ----------------
 
         self.sidebar = Sidebar()
 
-        self.stack = QStackedWidget()
+        # ---------------- Pages ----------------
+
+        self.pages = QStackedWidget()
 
         self.dashboard = Dashboard()
-        self.stock = StockExplorer()
+        self.stock_explorer = StockExplorer()
 
-        self.stack.addWidget(self.dashboard)
-        self.stack.addWidget(self.stock)
+        self.pages.addWidget(self.dashboard)
+        self.pages.addWidget(self.stock_explorer)
+
+        # ---------------- Layout ----------------
 
         layout.addWidget(self.sidebar)
-        layout.addWidget(self.stack)
+        layout.addWidget(self.pages)
 
-        self.setCentralWidget(central)
+        # ---------------- Navigation ----------------
 
         self.sidebar.dashboard_btn.clicked.connect(
-            lambda: self.stack.setCurrentIndex(0)
+            lambda: self.pages.setCurrentWidget(self.dashboard)
         )
 
         self.sidebar.stock_btn.clicked.connect(
-            lambda: self.stack.setCurrentIndex(1)
+            lambda: self.pages.setCurrentWidget(self.stock_explorer)
         )
-
-        status = QStatusBar()
-        status.showMessage(
-            f"{APP_NAME}   Version {APP_VERSION}   |   Ready"
-        )
-
-        self.setStatusBar(status)
