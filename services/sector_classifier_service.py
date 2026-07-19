@@ -1,9 +1,17 @@
 class SectorClassifierService:
 
+    # --------------------------------------------------
+    # BANK KEYWORDS
+    # --------------------------------------------------
+
     BANK_KEYWORDS = [
         "bank",
         "banks",
     ]
+
+    # --------------------------------------------------
+    # NBFC / FINANCIAL SERVICES KEYWORDS
+    # --------------------------------------------------
 
     NBFC_KEYWORDS = [
         "credit services",
@@ -16,24 +24,52 @@ class SectorClassifierService:
         "financial services",
         "asset management",
         "capital markets",
+        "financial data & stock exchanges",
+        "financial data",
+        "stock exchanges",
     ]
 
+    # --------------------------------------------------
+    # IT / SOFTWARE KEYWORDS
+    #
+    # IMPORTANT:
+    # Do NOT use the generic word "technology".
+    #
+    # Companies such as:
+    # Dixon Technologies
+    # Kaynes Technology
+    #
+    # are manufacturing/electronics businesses,
+    # not software companies.
+    # --------------------------------------------------
+
     IT_KEYWORDS = [
-        "information technology",
+        "information technology services",
         "software",
+        "software infrastructure",
+        "software application",
         "it services",
-        "technology",
         "computer services",
     ]
+
+    # --------------------------------------------------
+    # TEXT CLEANER
+    # --------------------------------------------------
 
     def _clean(self, value):
 
         if value is None:
             return ""
 
-        return str(
-            value
-        ).strip().lower()
+        return (
+            str(value)
+            .strip()
+            .lower()
+        )
+
+    # --------------------------------------------------
+    # KEYWORD MATCHER
+    # --------------------------------------------------
 
     def _contains_any(
         self,
@@ -45,6 +81,10 @@ class SectorClassifierService:
             keyword in text
             for keyword in keywords
         )
+
+    # --------------------------------------------------
+    # MAIN CLASSIFIER
+    # --------------------------------------------------
 
     def classify(
         self,
@@ -73,12 +113,12 @@ class SectorClassifierService:
             ]
         )
 
-        # --------------------------------------
-        # BANK
+        # --------------------------------------------------
+        # 1. BANK
         #
-        # Bank classification gets priority
-        # over generic financial-services rules.
-        # --------------------------------------
+        # Bank classification gets priority over generic
+        # Financial Services classification.
+        # --------------------------------------------------
 
         if (
             self._contains_any(
@@ -87,19 +127,38 @@ class SectorClassifierService:
             )
             or (
                 "bank" in company_text
-                and "banking" in sector_text
+                and (
+                    "financial" in sector_text
+                    or "banking" in sector_text
+                )
             )
         ):
 
             return {
-                "profile": "BANK",
-                "sector": sector,
-                "industry": industry,
+
+                "profile":
+                    "BANK",
+
+                "sector":
+                    sector,
+
+                "industry":
+                    industry,
             }
 
-        # --------------------------------------
-        # NBFC / FINANCIAL SERVICES
-        # --------------------------------------
+        # --------------------------------------------------
+        # 2. FINANCIAL SERVICES
+        #
+        # Includes:
+        # NBFC
+        # Credit businesses
+        # Asset managers
+        # Capital-market businesses
+        # Exchanges
+        #
+        # These remain PROVISIONAL in the scoring engine
+        # until specialized profiles are developed.
+        # --------------------------------------------------
 
         if self._contains_any(
             combined,
@@ -107,6 +166,7 @@ class SectorClassifierService:
         ):
 
             return {
+
                 "profile":
                     "FINANCIAL_SERVICES",
 
@@ -117,9 +177,14 @@ class SectorClassifierService:
                     industry,
             }
 
-        # --------------------------------------
-        # IT / SOFTWARE
-        # --------------------------------------
+        # --------------------------------------------------
+        # 3. IT / SOFTWARE
+        #
+        # Classification is based mainly on specific
+        # software / IT-service descriptions.
+        #
+        # Generic "Technology" is deliberately excluded.
+        # --------------------------------------------------
 
         if self._contains_any(
             combined,
@@ -127,6 +192,7 @@ class SectorClassifierService:
         ):
 
             return {
+
                 "profile":
                     "IT_SOFTWARE",
 
@@ -137,21 +203,40 @@ class SectorClassifierService:
                     industry,
             }
 
-        # --------------------------------------
-        # GENERAL PROFILE
+        # --------------------------------------------------
+        # 4. GENERAL
         #
-        # Manufacturing, consumer, pharma,
-        # energy and other sectors currently
-        # use the general scoring framework.
-        # More profiles will be added later.
-        # --------------------------------------
+        # Currently includes businesses such as:
+        #
+        # Manufacturing
+        # Electronics manufacturing
+        # Auto / Auto components
+        # Consumer
+        # Healthcare / Pharma
+        # Energy
+        # Industrials
+        # Hotels
+        # Chemicals
+        #
+        # More specialized profiles will be added later.
+        # --------------------------------------------------
 
         return {
-            "profile": "GENERAL",
-            "sector": sector,
-            "industry": industry,
+
+            "profile":
+                "GENERAL",
+
+            "sector":
+                sector,
+
+            "industry":
+                industry,
         }
 
+
+# --------------------------------------------------
+# CONVENIENCE FUNCTION
+# --------------------------------------------------
 
 def classify_sector(
     sector=None,
@@ -164,7 +249,7 @@ def classify_sector(
     )
 
     return service.classify(
-        sector,
-        industry,
-        company_name,
+        sector=sector,
+        industry=industry,
+        company_name=company_name,
     )

@@ -18,6 +18,10 @@ from services.data_quality_service import (
     calculate_data_quality,
 )
 
+from services.data_completeness_service import (
+    analyze_data_completeness,
+)
+
 from services.technical_service import (
     get_technical_metrics,
 )
@@ -35,11 +39,9 @@ class ResearchRadarService:
 
     def analyze_stock(self, symbol):
 
-        symbol = (
-            str(symbol)
-            .strip()
-            .upper()
-        )
+        symbol = str(
+            symbol
+        ).strip().upper()
 
         result = {
             "symbol": symbol,
@@ -47,9 +49,9 @@ class ResearchRadarService:
 
         try:
 
-            # ----------------------------------
-            # Company Metadata
-            # ----------------------------------
+            # --------------------------------------------------
+            # COMPANY METADATA
+            # --------------------------------------------------
 
             stock_data = get_stock_data(
                 symbol
@@ -80,13 +82,16 @@ class ResearchRadarService:
                 "industry"
             )
 
-            # ----------------------------------
-            # Sector Classification
-            # ----------------------------------
+            # --------------------------------------------------
+            # SECTOR CLASSIFICATION
+            # --------------------------------------------------
 
             classification = classify_sector(
+
                 sector=sector,
+
                 industry=industry,
+
                 company_name=company_name,
             )
 
@@ -97,9 +102,9 @@ class ResearchRadarService:
                 )
             )
 
-            # ----------------------------------
-            # Fundamental Data
-            # ----------------------------------
+            # --------------------------------------------------
+            # FUNDAMENTAL DATA
+            # --------------------------------------------------
 
             fundamental_data = (
                 get_fundamental_metrics(
@@ -120,9 +125,36 @@ class ResearchRadarService:
 
                 return result
 
-            # ----------------------------------
-            # Sector-Aware Fundamental Score
-            # ----------------------------------
+            # --------------------------------------------------
+            # RAW DATA QUALITY
+            #
+            # Preserved for diagnostic confidence.
+            # This is NOT the only ranking-data gate anymore.
+            # --------------------------------------------------
+
+            data_quality = (
+                calculate_data_quality(
+                    fundamental_data
+                )
+            )
+
+            # --------------------------------------------------
+            # DATA COMPLETENESS
+            #
+            # Determines whether sufficient independent
+            # evidence exists for meaningful analysis.
+            # --------------------------------------------------
+
+            completeness = (
+                analyze_data_completeness(
+                    fundamental_data,
+                    scoring_profile,
+                )
+            )
+
+            # --------------------------------------------------
+            # SECTOR-AWARE FUNDAMENTAL SCORE
+            # --------------------------------------------------
 
             fundamental_scores = (
                 calculate_sector_aware_fundamental_score(
@@ -138,19 +170,9 @@ class ResearchRadarService:
                 )
             )
 
-            # ----------------------------------
-            # Data Quality
-            # ----------------------------------
-
-            data_quality = (
-                calculate_data_quality(
-                    fundamental_data
-                )
-            )
-
-            # ----------------------------------
-            # Technical Data
-            # ----------------------------------
+            # --------------------------------------------------
+            # TECHNICAL DATA
+            # --------------------------------------------------
 
             technical_data = (
                 get_technical_metrics(
@@ -177,9 +199,11 @@ class ResearchRadarService:
                 )
             )
 
-            # ----------------------------------
-            # Alpha Composite Prototype
-            # ----------------------------------
+            # --------------------------------------------------
+            # ALPHA COMPOSITE
+            #
+            # Existing composite logic is preserved.
+            # --------------------------------------------------
 
             alpha = (
                 calculate_alpha_composite(
@@ -189,37 +213,144 @@ class ResearchRadarService:
                 )
             )
 
-            # ----------------------------------
-            # Production Ranking Eligibility
+            # --------------------------------------------------
+            # COMPLETENESS-AWARE GATING
             #
-            # Provisional sector profiles may be
-            # analyzed and displayed, but must not
-            # automatically enter the future
-            # production Top-30/Top-12 pool.
-            # ----------------------------------
+            # Alpha Composite may reject a company because
+            # the old raw data-quality gate is strict.
+            #
+            # We separate those data-related gate reasons
+            # from genuine investment-quality gate reasons.
+            # --------------------------------------------------
 
-            hard_gate_pass = bool(
+            original_gate_reasons = list(
                 alpha.get(
-                    "hard_gate_pass"
+                    "gate_reasons",
+                    [],
                 )
             )
 
+            data_gate_reasons = {
+                "Insufficient data quality",
+                "Low data confidence",
+            }
+
+            non_data_gate_reasons = [
+
+                reason
+
+                for reason
+                in original_gate_reasons
+
+                if reason
+                not in data_gate_reasons
+            ]
+
+            completeness_ready = bool(
+                completeness.get(
+                    "ranking_data_ready",
+                    False,
+                )
+            )
+
+            # --------------------------------------------------
+            # EFFECTIVE HARD GATE
+            #
+            # A stock may proceed when:
+            #
+            # 1. completeness resolver confirms enough data
+            # 2. no genuine non-data hard-gate failure remains
+            #
+            # Missing vendor fields therefore no longer cause
+            # automatic rejection by themselves.
+            # --------------------------------------------------
+
+            effective_hard_gate_pass = (
+
+                completeness_ready
+
+                and len(
+                    non_data_gate_reasons
+                ) == 0
+            )
+
+            effective_gate_reasons = list(
+                non_data_gate_reasons
+            )
+
+            if not completeness_ready:
+
+                effective_gate_reasons.extend(
+                    completeness.get(
+                        "blocking_reasons",
+                        [],
+                    )
+                )
+
+            # --------------------------------------------------
+            # WARNINGS
+            # --------------------------------------------------
+
+            data_warnings = list(
+                completeness.get(
+                    "warnings",
+                    [],
+                )
+            )
+
+            # If old data-quality confidence is low but the
+            # completeness resolver allows analysis, preserve
+            # that fact as a warning rather than hiding it.
+
+            raw_confidence = (
+                data_quality.get(
+                    "confidence_score"
+                )
+            )
+
+            if (
+                raw_confidence is not None
+                and raw_confidence < 75
+                and completeness_ready
+            ):
+
+                data_warnings.append(
+                    "Raw source data confidence is reduced"
+                )
+
+            # Remove duplicates while preserving order.
+
+            data_warnings = list(
+                dict.fromkeys(
+                    data_warnings
+                )
+            )
+
+            # --------------------------------------------------
+            # PRODUCTION ELIGIBILITY
+            #
+            # Provisional sector models remain outside the
+            # production ranking pool even when their numerical
+            # score is high.
+            # --------------------------------------------------
+
             production_eligible = (
-                hard_gate_pass
+
+                effective_hard_gate_pass
+
                 and profile_maturity
                 != "PROVISIONAL"
             )
 
+            # --------------------------------------------------
+            # RANKING NOTES
+            # --------------------------------------------------
+
             ranking_notes = []
 
-            if not hard_gate_pass:
-
-                ranking_notes.extend(
-                    alpha.get(
-                        "gate_reasons",
-                        [],
-                    )
-                )
+            ranking_notes.extend(
+                effective_gate_reasons
+            )
 
             if (
                 profile_maturity
@@ -230,9 +361,79 @@ class ResearchRadarService:
                     "Sector scoring profile is provisional"
                 )
 
-            # ----------------------------------
-            # Final Result
-            # ----------------------------------
+            ranking_notes.extend(
+                data_warnings
+            )
+
+            ranking_notes = list(
+                dict.fromkeys(
+                    ranking_notes
+                )
+            )
+
+            # --------------------------------------------------
+            # EFFECTIVE CLASSIFICATION
+            #
+            # Preserve Alpha classification unless the only
+            # reason for REJECT / REVIEW was old data-quality
+            # gating and completeness now allows analysis.
+            #
+            # In that case, classify from the existing score
+            # bands without altering the underlying score.
+            # --------------------------------------------------
+
+            effective_classification = (
+                alpha.get(
+                    "classification"
+                )
+            )
+
+            composite_score = (
+                alpha.get(
+                    "base_composite"
+                )
+            )
+
+            if (
+                effective_hard_gate_pass
+                and effective_classification
+                == "REJECT / REVIEW"
+                and composite_score is not None
+            ):
+
+                if composite_score >= 80:
+
+                    effective_classification = (
+                        "HIGH CONVICTION CANDIDATE"
+                    )
+
+                elif composite_score >= 70:
+
+                    effective_classification = (
+                        "STRONG RADAR CANDIDATE"
+                    )
+
+                elif composite_score >= 60:
+
+                    effective_classification = (
+                        "RADAR CANDIDATE"
+                    )
+
+                elif composite_score >= 50:
+
+                    effective_classification = (
+                        "MONITOR"
+                    )
+
+                else:
+
+                    effective_classification = (
+                        "REJECT / REVIEW"
+                    )
+
+            # --------------------------------------------------
+            # FINAL RESULT
+            # --------------------------------------------------
 
             result.update({
 
@@ -265,36 +466,61 @@ class ResearchRadarService:
                     ),
 
                 "composite_score":
-                    alpha.get(
-                        "base_composite"
-                    ),
+                    composite_score,
 
                 "readiness_score":
                     alpha.get(
                         "readiness_score"
                     ),
 
+                # Raw data-quality confidence is retained.
+
                 "data_confidence":
                     alpha.get(
                         "data_confidence"
                     ),
 
+                # New completeness information.
+
+                "coverage_score":
+                    completeness.get(
+                        "coverage_score"
+                    ),
+
+                "coverage_level":
+                    completeness.get(
+                        "coverage_level"
+                    ),
+
+                "ranking_data_ready":
+                    completeness_ready,
+
+                "data_warnings":
+                    data_warnings,
+
+                # Preserve original Alpha gate for diagnostics.
+
+                "original_hard_gate_pass":
+                    alpha.get(
+                        "hard_gate_pass"
+                    ),
+
+                "original_gate_reasons":
+                    original_gate_reasons,
+
+                # Effective production gate.
+
                 "hard_gate_pass":
-                    hard_gate_pass,
+                    effective_hard_gate_pass,
+
+                "gate_reasons":
+                    effective_gate_reasons,
 
                 "production_eligible":
                     production_eligible,
 
                 "classification":
-                    alpha.get(
-                        "classification"
-                    ),
-
-                "gate_reasons":
-                    alpha.get(
-                        "gate_reasons",
-                        [],
-                    ),
+                    effective_classification,
 
                 "technical_warnings":
                     alpha.get(
@@ -312,10 +538,16 @@ class ResearchRadarService:
 
             result.update({
                 "status": "ERROR",
-                "error": str(error),
+                "error": str(
+                    error
+                ),
             })
 
             return result
+
+    # --------------------------------------------------
+    # RANK SYMBOLS
+    # --------------------------------------------------
 
     def rank_symbols(
         self,
@@ -329,11 +561,9 @@ class ResearchRadarService:
 
         for symbol in symbols:
 
-            clean_symbol = (
-                str(symbol)
-                .strip()
-                .upper()
-            )
+            clean_symbol = str(
+                symbol
+            ).strip().upper()
 
             if not clean_symbol:
                 continue
@@ -359,52 +589,59 @@ class ResearchRadarService:
                 analysis
             )
 
-        # ----------------------------------
-        # Successful Analyses
-        # ----------------------------------
+        # --------------------------------------------------
+        # SUCCESSFUL ANALYSES
+        # --------------------------------------------------
 
         successful = [
+
             item
+
             for item in results
+
             if item.get(
                 "status"
             ) == "OK"
         ]
 
-        # ----------------------------------
-        # Production-Eligible Pool
-        # ----------------------------------
+        # --------------------------------------------------
+        # PRODUCTION-ELIGIBLE POOL
+        # --------------------------------------------------
 
         eligible = [
+
             item
+
             for item in successful
+
             if item.get(
                 "production_eligible"
             )
         ]
 
-        # ----------------------------------
-        # Review Pool
-        #
-        # Includes provisional sector profiles
-        # and stocks failing hard gates.
-        # ----------------------------------
+        # --------------------------------------------------
+        # REVIEW POOL
+        # --------------------------------------------------
 
         review = [
+
             item
+
             for item in successful
+
             if not item.get(
                 "production_eligible"
             )
         ]
 
-        # ----------------------------------
-        # Ranking Function
-        # ----------------------------------
+        # --------------------------------------------------
+        # RANKING KEY
+        # --------------------------------------------------
 
         def ranking_key(item):
 
             return (
+
                 item.get(
                     "composite_score"
                 )
@@ -449,11 +686,16 @@ class ResearchRadarService:
             start=1,
         ):
 
-            item["rank"] = index
+            item[
+                "rank"
+            ] = index
 
         errors = [
+
             item
+
             for item in results
+
             if item.get(
                 "status"
             ) != "OK"
@@ -471,16 +713,24 @@ class ResearchRadarService:
                 errors,
 
             "analyzed_count":
-                len(results),
+                len(
+                    results
+                ),
 
             "successful_count":
-                len(successful),
+                len(
+                    successful
+                ),
 
             "eligible_count":
-                len(eligible),
+                len(
+                    eligible
+                ),
 
             "review_count":
-                len(review),
+                len(
+                    review
+                ),
         }
 
 

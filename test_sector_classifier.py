@@ -7,9 +7,15 @@ from services.sector_classifier_service import (
 )
 
 
+# --------------------------------------------------
+# STOCKS TO TEST
+# --------------------------------------------------
+
 symbols = [
     "INFY",
     "TCS",
+    "DIXON",
+    "KAYNES",
     "HDFCBANK",
     "BAJFINANCE",
     "RELIANCE",
@@ -17,6 +23,10 @@ symbols = [
     "BSE",
 ]
 
+
+# --------------------------------------------------
+# RUN SECTOR CLASSIFICATION TEST
+# --------------------------------------------------
 
 for symbol in symbols:
 
@@ -29,47 +39,82 @@ for symbol in symbols:
 
     print("=" * 70)
 
+    # ----------------------------------------------
+    # GET COMPANY DATA
+    # ----------------------------------------------
+
     data = get_stock_data(
         symbol
     )
 
-    if "error" in data:
+    # ----------------------------------------------
+    # HANDLE DATA ERROR
+    # ----------------------------------------------
+
+    if (
+        not data
+        or "error" in data
+    ):
 
         print(
             "ERROR:",
-            data["error"],
+            data.get(
+                "error",
+                "Unknown error",
+            )
+            if data
+            else "No data returned",
         )
 
         continue
 
+    # ----------------------------------------------
+    # CLASSIFY COMPANY
+    # ----------------------------------------------
+
     result = classify_sector(
+
         sector=data.get(
             "sector"
         ),
+
         industry=data.get(
             "industry"
         ),
+
         company_name=data.get(
             "name"
         ),
     )
 
+    # ----------------------------------------------
+    # DISPLAY RESULTS
+    # ----------------------------------------------
+
     print(
         "Company  :",
-        data.get("name"),
+        data.get(
+            "name"
+        ),
     )
 
     print(
         "Sector   :",
-        data.get("sector"),
+        data.get(
+            "sector"
+        ),
     )
 
     print(
         "Industry :",
-        data.get("industry"),
+        data.get(
+            "industry"
+        ),
     )
 
     print(
         "Profile  :",
-        result.get("profile"),
+        result.get(
+            "profile"
+        ),
     )
