@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 from app.screens.sidebar import Sidebar
 from app.screens.dashboard import Dashboard
 from app.screens.stock_explorer import StockExplorer
+from app.screens.research_radar import ResearchRadar
 
 
 class MainWindow(QMainWindow):
@@ -33,9 +34,11 @@ class MainWindow(QMainWindow):
 
         self.dashboard = Dashboard()
         self.stock_explorer = StockExplorer()
+        self.research_radar = ResearchRadar()
 
         self.pages.addWidget(self.dashboard)
         self.pages.addWidget(self.stock_explorer)
+        self.pages.addWidget(self.research_radar)
 
         # ---------------- Layout ----------------
 
@@ -50,4 +53,8 @@ class MainWindow(QMainWindow):
 
         self.sidebar.stock_btn.clicked.connect(
             lambda: self.pages.setCurrentWidget(self.stock_explorer)
+        )
+
+        self.sidebar.research_btn.clicked.connect(
+            lambda: self.pages.setCurrentWidget(self.research_radar)
         )
