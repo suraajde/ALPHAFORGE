@@ -1,9 +1,17 @@
+from services.stock_service import (
+    get_stock_data,
+)
+
 from services.fundamental_service import (
     get_fundamental_metrics,
 )
 
-from services.fundamental_score_service import (
-    calculate_fundamental_score,
+from services.sector_classifier_service import (
+    classify_sector,
+)
+
+from services.sector_fundamental_score_service import (
+    calculate_sector_aware_fundamental_score,
 )
 
 from services.data_quality_service import (
@@ -28,7 +36,7 @@ class ResearchRadarService:
     def analyze_stock(self, symbol):
 
         symbol = (
-            symbol
+            str(symbol)
             .strip()
             .upper()
         )
@@ -40,7 +48,57 @@ class ResearchRadarService:
         try:
 
             # ----------------------------------
-            # Fundamental Layer
+            # Company Metadata
+            # ----------------------------------
+
+            stock_data = get_stock_data(
+                symbol
+            )
+
+            if (
+                not stock_data
+                or "error" in stock_data
+            ):
+
+                result.update({
+                    "status": "ERROR",
+                    "error":
+                        "Company data unavailable",
+                })
+
+                return result
+
+            company_name = stock_data.get(
+                "name"
+            )
+
+            sector = stock_data.get(
+                "sector"
+            )
+
+            industry = stock_data.get(
+                "industry"
+            )
+
+            # ----------------------------------
+            # Sector Classification
+            # ----------------------------------
+
+            classification = classify_sector(
+                sector=sector,
+                industry=industry,
+                company_name=company_name,
+            )
+
+            scoring_profile = (
+                classification.get(
+                    "profile",
+                    "GENERAL",
+                )
+            )
+
+            # ----------------------------------
+            # Fundamental Data
             # ----------------------------------
 
             fundamental_data = (
@@ -62,14 +120,26 @@ class ResearchRadarService:
 
                 return result
 
+            # ----------------------------------
+            # Sector-Aware Fundamental Score
+            # ----------------------------------
+
             fundamental_scores = (
-                calculate_fundamental_score(
-                    fundamental_data
+                calculate_sector_aware_fundamental_score(
+                    fundamental_data,
+                    scoring_profile,
+                )
+            )
+
+            profile_maturity = (
+                fundamental_scores.get(
+                    "profile_maturity",
+                    "BASELINE",
                 )
             )
 
             # ----------------------------------
-            # Data Quality Layer
+            # Data Quality
             # ----------------------------------
 
             data_quality = (
@@ -79,7 +149,7 @@ class ResearchRadarService:
             )
 
             # ----------------------------------
-            # Technical Layer
+            # Technical Data
             # ----------------------------------
 
             technical_data = (
@@ -119,10 +189,70 @@ class ResearchRadarService:
                 )
             )
 
+            # ----------------------------------
+            # Production Ranking Eligibility
+            #
+            # Provisional sector profiles may be
+            # analyzed and displayed, but must not
+            # automatically enter the future
+            # production Top-30/Top-12 pool.
+            # ----------------------------------
+
+            hard_gate_pass = bool(
+                alpha.get(
+                    "hard_gate_pass"
+                )
+            )
+
+            production_eligible = (
+                hard_gate_pass
+                and profile_maturity
+                != "PROVISIONAL"
+            )
+
+            ranking_notes = []
+
+            if not hard_gate_pass:
+
+                ranking_notes.extend(
+                    alpha.get(
+                        "gate_reasons",
+                        [],
+                    )
+                )
+
+            if (
+                profile_maturity
+                == "PROVISIONAL"
+            ):
+
+                ranking_notes.append(
+                    "Sector scoring profile is provisional"
+                )
+
+            # ----------------------------------
+            # Final Result
+            # ----------------------------------
+
             result.update({
 
                 "status":
                     "OK",
+
+                "company_name":
+                    company_name,
+
+                "sector":
+                    sector,
+
+                "industry":
+                    industry,
+
+                "scoring_profile":
+                    scoring_profile,
+
+                "profile_maturity":
+                    profile_maturity,
 
                 "fundamental_score":
                     alpha.get(
@@ -150,9 +280,10 @@ class ResearchRadarService:
                     ),
 
                 "hard_gate_pass":
-                    alpha.get(
-                        "hard_gate_pass"
-                    ),
+                    hard_gate_pass,
+
+                "production_eligible":
+                    production_eligible,
 
                 "classification":
                     alpha.get(
@@ -170,6 +301,9 @@ class ResearchRadarService:
                         "technical_warnings",
                         [],
                     ),
+
+                "ranking_notes":
+                    ranking_notes,
             })
 
             return result
@@ -226,31 +360,51 @@ class ResearchRadarService:
             )
 
         # ----------------------------------
-        # Keep successful analyses
+        # Successful Analyses
         # ----------------------------------
 
         successful = [
             item
             for item in results
-            if item.get("status") == "OK"
+            if item.get(
+                "status"
+            ) == "OK"
         ]
 
         # ----------------------------------
-        # Ranking Logic
-        #
-        # 1. Hard-gate pass first
-        # 2. Composite score
-        # 3. Readiness score
-        # 4. Fundamental score
+        # Production-Eligible Pool
         # ----------------------------------
 
-        successful.sort(
-            key=lambda item: (
-                bool(
-                    item.get(
-                        "hard_gate_pass"
-                    )
-                ),
+        eligible = [
+            item
+            for item in successful
+            if item.get(
+                "production_eligible"
+            )
+        ]
+
+        # ----------------------------------
+        # Review Pool
+        #
+        # Includes provisional sector profiles
+        # and stocks failing hard gates.
+        # ----------------------------------
+
+        review = [
+            item
+            for item in successful
+            if not item.get(
+                "production_eligible"
+            )
+        ]
+
+        # ----------------------------------
+        # Ranking Function
+        # ----------------------------------
+
+        def ranking_key(item):
+
+            return (
                 item.get(
                     "composite_score"
                 )
@@ -258,6 +412,7 @@ class ResearchRadarService:
                     "composite_score"
                 ) is not None
                 else -1,
+
                 item.get(
                     "readiness_score"
                 )
@@ -265,6 +420,7 @@ class ResearchRadarService:
                     "readiness_score"
                 ) is not None
                 else -1,
+
                 item.get(
                     "fundamental_score"
                 )
@@ -272,13 +428,21 @@ class ResearchRadarService:
                     "fundamental_score"
                 ) is not None
                 else -1,
-            ),
+            )
+
+        eligible.sort(
+            key=ranking_key,
             reverse=True,
         )
 
-        ranked = (
-            successful[:limit]
+        review.sort(
+            key=ranking_key,
+            reverse=True,
         )
+
+        ranked = eligible[
+            :limit
+        ]
 
         for index, item in enumerate(
             ranked,
@@ -290,16 +454,33 @@ class ResearchRadarService:
         errors = [
             item
             for item in results
-            if item.get("status") != "OK"
+            if item.get(
+                "status"
+            ) != "OK"
         ]
 
         return {
-            "ranked": ranked,
-            "errors": errors,
+
+            "ranked":
+                ranked,
+
+            "review":
+                review,
+
+            "errors":
+                errors,
+
             "analyzed_count":
                 len(results),
+
             "successful_count":
                 len(successful),
+
+            "eligible_count":
+                len(eligible),
+
+            "review_count":
+                len(review),
         }
 
 
