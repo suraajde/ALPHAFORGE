@@ -1,0 +1,36 @@
+{
+  "cache_version": 1,
+  "symbol": "APLAPOLLO",
+  "cached_at": "2026-07-19T08:36:52.894618+00:00",
+  "analysis": {
+    "symbol": "APLAPOLLO",
+    "status": "OK",
+    "company_name": "APL Apollo Tubes Limited",
+    "sector": "Basic Materials",
+    "industry": "Steel",
+    "scoring_profile": "GENERAL",
+    "profile_maturity": "BASELINE",
+    "fundamental_score": 79.2,
+    "technical_score": 48.4,
+    "composite_score": 66.9,
+    "readiness_score": 47.5,
+    "data_confidence": 97.0,
+    "coverage_score": 97.5,
+    "coverage_level": "EXCELLENT",
+    "ranking_data_ready": true,
+    "data_status": "CLEAN",
+    "data_caution": false,
+    "data_caution_reasons": [],
+    "data_warnings": [],
+    "original_hard_gate_pass": true,
+    "original_gate_reasons": [],
+    "hard_gate_pass": true,
+    "gate_reasons": [],
+    "production_eligible": true,
+    "classification": "RADAR CANDIDATE",
+    "technical_warnings": [
+      "Weak price trend"
+    ],
+    "ranking_notes": []
+  }
+}

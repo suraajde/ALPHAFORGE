@@ -1,0 +1,36 @@
+{
+  "cache_version": 1,
+  "symbol": "SUPREMEIND",
+  "cached_at": "2026-07-19T08:36:54.573102+00:00",
+  "analysis": {
+    "symbol": "SUPREMEIND",
+    "status": "OK",
+    "company_name": "The Supreme Industries Limited",
+    "sector": "Industrials",
+    "industry": "Building Products & Equipment",
+    "scoring_profile": "GENERAL",
+    "profile_maturity": "BASELINE",
+    "fundamental_score": 78.6,
+    "technical_score": 39.2,
+    "composite_score": 62.8,
+    "readiness_score": 38.5,
+    "data_confidence": 97.0,
+    "coverage_score": 97.5,
+    "coverage_level": "EXCELLENT",
+    "ranking_data_ready": true,
+    "data_status": "CLEAN",
+    "data_caution": false,
+    "data_caution_reasons": [],
+    "data_warnings": [],
+    "original_hard_gate_pass": true,
+    "original_gate_reasons": [],
+    "hard_gate_pass": true,
+    "gate_reasons": [],
+    "production_eligible": true,
+    "classification": "RADAR CANDIDATE",
+    "technical_warnings": [
+      "Weak price trend"
+    ],
+    "ranking_notes": []
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "cache_version": 1,
+  "symbol": "KPITTECH",
+  "cached_at": "2026-07-19T08:36:42.510165+00:00",
+  "analysis": {
+    "symbol": "KPITTECH",
+    "status": "OK",
+    "company_name": "KPIT Technologies Limited",
+    "sector": "Technology",
+    "industry": "Software - Infrastructure",
+    "scoring_profile": "IT_SOFTWARE",
+    "profile_maturity": "BASELINE",
+    "fundamental_score": 71.1,
+    "technical_score": 18.8,
+    "composite_score": 50.2,
+    "readiness_score": 17.8,
+    "data_confidence": 97.0,
+    "coverage_score": 97.5,
+    "coverage_level": "EXCELLENT",
+    "ranking_data_ready": true,
+    "data_status": "CLEAN",
+    "data_caution": false,
+    "data_caution_reasons": [],
+    "data_warnings": [],
+    "original_hard_gate_pass": true,
+    "original_gate_reasons": [],
+    "hard_gate_pass": true,
+    "gate_reasons": [],
+    "production_eligible": true,
+    "classification": "MONITOR",
+    "technical_warnings": [
+      "Weak price trend",
+      "Weak momentum",
+      "Benchmark underperformance",
+      "Elevated price risk"
+    ],
+    "ranking_notes": []
+  }
+}

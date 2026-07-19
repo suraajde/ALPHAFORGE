@@ -26,6 +26,11 @@ from services.data_caution_service import (
     evaluate_data_caution,
 )
 
+from services.scan_cache_service import (
+    load_cached_analysis,
+    save_cached_analysis,
+)
+
 from services.technical_service import (
     get_technical_metrics,
 )
@@ -41,7 +46,14 @@ from services.alpha_composite_service import (
 
 class ResearchRadarService:
 
-    def analyze_stock(self, symbol):
+    # ==================================================
+    # ANALYZE ONE STOCK
+    # ==================================================
+
+    def analyze_stock(
+        self,
+        symbol,
+    ):
 
         symbol = str(
             symbol
@@ -67,36 +79,46 @@ class ResearchRadarService:
             ):
 
                 result.update({
-                    "status": "ERROR",
+                    "status":
+                        "ERROR",
+
                     "error":
                         "Company data unavailable",
                 })
 
                 return result
 
-            company_name = stock_data.get(
-                "name"
+            company_name = (
+                stock_data.get(
+                    "name"
+                )
             )
 
-            sector = stock_data.get(
-                "sector"
+            sector = (
+                stock_data.get(
+                    "sector"
+                )
             )
 
-            industry = stock_data.get(
-                "industry"
+            industry = (
+                stock_data.get(
+                    "industry"
+                )
             )
 
             # --------------------------------------------------
             # SECTOR CLASSIFICATION
             # --------------------------------------------------
 
-            classification = classify_sector(
+            classification = (
+                classify_sector(
 
-                sector=sector,
+                    sector=sector,
 
-                industry=industry,
+                    industry=industry,
 
-                company_name=company_name,
+                    company_name=company_name,
+                )
             )
 
             scoring_profile = (
@@ -122,7 +144,9 @@ class ResearchRadarService:
             ):
 
                 result.update({
-                    "status": "ERROR",
+                    "status":
+                        "ERROR",
+
                     "error":
                         "Fundamental data unavailable",
                 })
@@ -153,16 +177,22 @@ class ResearchRadarService:
             # --------------------------------------------------
             # DATA CAUTION STATUS
             #
-            # CLEAN / CAUTION / INSUFFICIENT
+            # CLEAN
+            # CAUTION
+            # INSUFFICIENT
             #
-            # This is a transparency layer only.
-            # It does not alter investment scores.
+            # Transparency layer only.
+            # Does not alter investment scores.
             # --------------------------------------------------
 
             data_caution = (
                 evaluate_data_caution(
-                    data_quality=data_quality,
-                    completeness=completeness,
+
+                    data_quality=
+                        data_quality,
+
+                    completeness=
+                        completeness,
                 )
             )
 
@@ -172,7 +202,9 @@ class ResearchRadarService:
 
             fundamental_scores = (
                 calculate_sector_aware_fundamental_score(
+
                     fundamental_data,
+
                     scoring_profile,
                 )
             )
@@ -200,7 +232,9 @@ class ResearchRadarService:
             ):
 
                 result.update({
-                    "status": "ERROR",
+                    "status":
+                        "ERROR",
+
                     "error":
                         "Technical data unavailable",
                 })
@@ -219,14 +253,17 @@ class ResearchRadarService:
 
             alpha = (
                 calculate_alpha_composite(
+
                     fundamental_scores,
+
                     technical_scores,
+
                     data_quality,
                 )
             )
 
             # --------------------------------------------------
-            # COMPLETENESS-AWARE GATING
+            # ORIGINAL GATE REASONS
             # --------------------------------------------------
 
             original_gate_reasons = list(
@@ -236,8 +273,18 @@ class ResearchRadarService:
                 )
             )
 
+            # --------------------------------------------------
+            # DATA-ONLY GATE REASONS
+            #
+            # These may be overridden by the newer
+            # completeness resolver when sufficient
+            # independent evidence exists.
+            # --------------------------------------------------
+
             data_gate_reasons = {
+
                 "Insufficient data quality",
+
                 "Low data confidence",
             }
 
@@ -251,6 +298,10 @@ class ResearchRadarService:
                 if reason
                 not in data_gate_reasons
             ]
+
+            # --------------------------------------------------
+            # COMPLETENESS READINESS
+            # --------------------------------------------------
 
             completeness_ready = bool(
                 completeness.get(
@@ -279,6 +330,7 @@ class ResearchRadarService:
             if not completeness_ready:
 
                 effective_gate_reasons.extend(
+
                     completeness.get(
                         "blocking_reasons",
                         [],
@@ -286,7 +338,7 @@ class ResearchRadarService:
                 )
 
             # --------------------------------------------------
-            # WARNINGS
+            # DATA WARNINGS
             # --------------------------------------------------
 
             data_warnings = list(
@@ -304,13 +356,17 @@ class ResearchRadarService:
 
             if (
                 raw_confidence is not None
+
                 and raw_confidence < 75
+
                 and completeness_ready
             ):
 
                 data_warnings.append(
                     "Raw source data confidence is reduced"
                 )
+
+            # Remove duplicates.
 
             data_warnings = list(
                 dict.fromkeys(
@@ -320,6 +376,9 @@ class ResearchRadarService:
 
             # --------------------------------------------------
             # PRODUCTION ELIGIBILITY
+            #
+            # Provisional sector models remain outside
+            # production ranking.
             # --------------------------------------------------
 
             production_eligible = (
@@ -375,10 +434,17 @@ class ResearchRadarService:
                 )
             )
 
+            # --------------------------------------------------
+            # RECLASSIFY ONLY WHEN OLD DATA-QUALITY GATE
+            # WAS THE REASON FOR REJECTION
+            # --------------------------------------------------
+
             if (
                 effective_hard_gate_pass
+
                 and effective_classification
                 == "REJECT / REVIEW"
+
                 and composite_score is not None
             ):
 
@@ -413,7 +479,7 @@ class ResearchRadarService:
                     )
 
             # --------------------------------------------------
-            # FINAL RESULT
+            # FINAL STOCK ANALYSIS
             # --------------------------------------------------
 
             result.update({
@@ -436,6 +502,10 @@ class ResearchRadarService:
                 "profile_maturity":
                     profile_maturity,
 
+                # ----------------------------------------------
+                # SCORES
+                # ----------------------------------------------
+
                 "fundamental_score":
                     alpha.get(
                         "fundamental_score"
@@ -454,14 +524,18 @@ class ResearchRadarService:
                         "readiness_score"
                     ),
 
-                # Raw data-quality confidence
+                # ----------------------------------------------
+                # RAW DATA QUALITY
+                # ----------------------------------------------
 
                 "data_confidence":
                     alpha.get(
                         "data_confidence"
                     ),
 
-                # Completeness information
+                # ----------------------------------------------
+                # DATA COMPLETENESS
+                # ----------------------------------------------
 
                 "coverage_score":
                     completeness.get(
@@ -476,7 +550,9 @@ class ResearchRadarService:
                 "ranking_data_ready":
                     completeness_ready,
 
-                # Data caution information
+                # ----------------------------------------------
+                # DATA CAUTION
+                # ----------------------------------------------
 
                 "data_status":
                     data_caution.get(
@@ -497,7 +573,9 @@ class ResearchRadarService:
                 "data_warnings":
                     data_warnings,
 
-                # Original Alpha gate diagnostics
+                # ----------------------------------------------
+                # ORIGINAL ALPHA GATE
+                # ----------------------------------------------
 
                 "original_hard_gate_pass":
                     alpha.get(
@@ -507,7 +585,9 @@ class ResearchRadarService:
                 "original_gate_reasons":
                     original_gate_reasons,
 
-                # Effective production gate
+                # ----------------------------------------------
+                # EFFECTIVE PRODUCTION GATE
+                # ----------------------------------------------
 
                 "hard_gate_pass":
                     effective_hard_gate_pass,
@@ -517,6 +597,10 @@ class ResearchRadarService:
 
                 "production_eligible":
                     production_eligible,
+
+                # ----------------------------------------------
+                # CLASSIFICATION
+                # ----------------------------------------------
 
                 "classification":
                     effective_classification,
@@ -536,27 +620,51 @@ class ResearchRadarService:
         except Exception as error:
 
             result.update({
-                "status": "ERROR",
-                "error": str(
-                    error
-                ),
+
+                "status":
+                    "ERROR",
+
+                "error":
+                    str(
+                        error
+                    ),
             })
 
             return result
 
-    # --------------------------------------------------
+    # ==================================================
     # RANK SYMBOLS
-    # --------------------------------------------------
+    #
+    # Sprint 10.2:
+    # Scan Cache Integration
+    # ==================================================
 
     def rank_symbols(
         self,
         symbols,
         limit=30,
+        force_refresh=False,
     ):
 
         results = []
 
         seen = set()
+
+        # --------------------------------------------------
+        # CACHE STATISTICS
+        # --------------------------------------------------
+
+        cache_hits = 0
+
+        live_analyses = 0
+
+        cache_saves = 0
+
+        cache_save_failures = 0
+
+        # --------------------------------------------------
+        # PROCESS SYMBOLS
+        # --------------------------------------------------
 
         for symbol in symbols:
 
@@ -565,24 +673,169 @@ class ResearchRadarService:
             ).strip().upper()
 
             if not clean_symbol:
+
                 continue
 
             if clean_symbol in seen:
+
                 continue
 
             seen.add(
                 clean_symbol
             )
 
-            print(
-                f"Analyzing {clean_symbol}..."
-            )
+            # --------------------------------------------------
+            # CHECK CACHE
+            # --------------------------------------------------
 
-            analysis = (
-                self.analyze_stock(
-                    clean_symbol
+            cached = (
+                load_cached_analysis(
+
+                    clean_symbol,
+
+                    force_refresh=
+                        force_refresh,
                 )
             )
+
+            # --------------------------------------------------
+            # CACHE HIT
+            # --------------------------------------------------
+
+            if cached.get(
+                "cache_hit"
+            ):
+
+                print(
+                    f"Loading {clean_symbol} "
+                    f"from cache..."
+                )
+
+                analysis = (
+                    cached.get(
+                        "analysis"
+                    )
+                )
+
+                # Defensive copy so current ranking
+                # modifications do not affect the
+                # in-memory cached dictionary.
+
+                if isinstance(
+                    analysis,
+                    dict,
+                ):
+
+                    analysis = dict(
+                        analysis
+                    )
+
+                cache_hits += 1
+
+            # --------------------------------------------------
+            # CACHE MISS / EXPIRED / FORCE REFRESH
+            # --------------------------------------------------
+
+            else:
+
+                cache_status = (
+                    cached.get(
+                        "cache_status",
+                        "MISS",
+                    )
+                )
+
+                if (
+                    cache_status
+                    == "FORCE_REFRESH"
+                ):
+
+                    print(
+                        f"Refreshing "
+                        f"{clean_symbol}..."
+                    )
+
+                elif (
+                    cache_status
+                    == "EXPIRED"
+                ):
+
+                    print(
+                        f"Cache expired for "
+                        f"{clean_symbol}. "
+                        f"Analyzing..."
+                    )
+
+                else:
+
+                    print(
+                        f"Analyzing "
+                        f"{clean_symbol}..."
+                    )
+
+                # ----------------------------------------------
+                # LIVE ANALYSIS
+                # ----------------------------------------------
+
+                analysis = (
+                    self.analyze_stock(
+                        clean_symbol
+                    )
+                )
+
+                live_analyses += 1
+
+                # ----------------------------------------------
+                # SAVE ONLY SUCCESSFUL ANALYSIS
+                # ----------------------------------------------
+
+                if (
+                    isinstance(
+                        analysis,
+                        dict,
+                    )
+
+                    and analysis.get(
+                        "status"
+                    ) == "OK"
+                ):
+
+                    save_result = (
+                        save_cached_analysis(
+
+                            clean_symbol,
+
+                            analysis,
+                        )
+                    )
+
+                    if save_result.get(
+                        "saved"
+                    ):
+
+                        cache_saves += 1
+
+                    else:
+
+                        cache_save_failures += 1
+
+            # --------------------------------------------------
+            # STORE RESULT
+            # --------------------------------------------------
+
+            if analysis is None:
+
+                analysis = {
+
+                    "status":
+                        "ERROR",
+
+                    "symbol":
+                        clean_symbol,
+
+                    "error":
+                        "No analysis result returned",
+                }
 
             results.append(
                 analysis
@@ -637,34 +890,46 @@ class ResearchRadarService:
         # RANKING KEY
         # --------------------------------------------------
 
-        def ranking_key(item):
+        def ranking_key(
+            item,
+        ):
 
             return (
 
                 item.get(
                     "composite_score"
                 )
+
                 if item.get(
                     "composite_score"
                 ) is not None
+
                 else -1,
 
                 item.get(
                     "readiness_score"
                 )
+
                 if item.get(
                     "readiness_score"
                 ) is not None
+
                 else -1,
 
                 item.get(
                     "fundamental_score"
                 )
+
                 if item.get(
                     "fundamental_score"
                 ) is not None
+
                 else -1,
             )
+
+        # --------------------------------------------------
+        # SORT POOLS
+        # --------------------------------------------------
 
         eligible.sort(
             key=ranking_key,
@@ -676,9 +941,20 @@ class ResearchRadarService:
             reverse=True,
         )
 
+        # --------------------------------------------------
+        # APPLY TOP-N LIMIT
+        # --------------------------------------------------
+
         ranked = eligible[
             :limit
         ]
+
+        # --------------------------------------------------
+        # ASSIGN CURRENT-SCAN RANK
+        #
+        # Rank is assigned AFTER cache retrieval.
+        # Rank is not used as cached source data.
+        # --------------------------------------------------
 
         for index, item in enumerate(
             ranked,
@@ -688,6 +964,10 @@ class ResearchRadarService:
             item[
                 "rank"
             ] = index
+
+        # --------------------------------------------------
+        # ERRORS
+        # --------------------------------------------------
 
         errors = [
 
@@ -699,6 +979,10 @@ class ResearchRadarService:
                 "status"
             ) != "OK"
         ]
+
+        # --------------------------------------------------
+        # FINAL RADAR RESULT
+        # --------------------------------------------------
 
         return {
 
@@ -730,12 +1014,36 @@ class ResearchRadarService:
                 len(
                     review
                 ),
+
+            # ----------------------------------------------
+            # CACHE STATISTICS
+            # ----------------------------------------------
+
+            "cache_hits":
+                cache_hits,
+
+            "live_analyses":
+                live_analyses,
+
+            "cache_saves":
+                cache_saves,
+
+            "cache_save_failures":
+                cache_save_failures,
+
+            "force_refresh":
+                force_refresh,
         }
 
+
+# ==================================================
+# PUBLIC RESEARCH RADAR FUNCTION
+# ==================================================
 
 def build_research_radar(
     symbols,
     limit=30,
+    force_refresh=False,
 ):
 
     service = (
@@ -743,6 +1051,11 @@ def build_research_radar(
     )
 
     return service.rank_symbols(
+
         symbols,
-        limit,
+
+        limit=limit,
+
+        force_refresh=
+            force_refresh,
     )

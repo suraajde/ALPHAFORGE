@@ -1,0 +1,44 @@
+{
+  "cache_version": 1,
+  "symbol": "KAYNES",
+  "cached_at": "2026-07-19T08:36:59.290817+00:00",
+  "analysis": {
+    "symbol": "KAYNES",
+    "status": "OK",
+    "company_name": "Kaynes Technology India Limited",
+    "sector": "Technology",
+    "industry": "Electronic Components",
+    "scoring_profile": "GENERAL",
+    "profile_maturity": "BASELINE",
+    "fundamental_score": 53.5,
+    "technical_score": 28.5,
+    "composite_score": 43.5,
+    "readiness_score": 28.9,
+    "data_confidence": 97.0,
+    "coverage_score": 97.5,
+    "coverage_level": "EXCELLENT",
+    "ranking_data_ready": true,
+    "data_status": "CLEAN",
+    "data_caution": false,
+    "data_caution_reasons": [],
+    "data_warnings": [],
+    "original_hard_gate_pass": false,
+    "original_gate_reasons": [
+      "Fundamental score below minimum"
+    ],
+    "hard_gate_pass": false,
+    "gate_reasons": [
+      "Fundamental score below minimum"
+    ],
+    "production_eligible": false,
+    "classification": "REJECT / REVIEW",
+    "technical_warnings": [
+      "Weak momentum",
+      "Benchmark underperformance",
+      "Elevated price risk"
+    ],
+    "ranking_notes": [
+      "Fundamental score below minimum"
+    ]
+  }
+}

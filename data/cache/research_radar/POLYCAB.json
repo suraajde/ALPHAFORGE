@@ -1,0 +1,47 @@
+{
+  "cache_version": 1,
+  "symbol": "POLYCAB",
+  "cached_at": "2026-07-19T08:36:49.547558+00:00",
+  "analysis": {
+    "symbol": "POLYCAB",
+    "status": "OK",
+    "company_name": "Polycab India Limited",
+    "sector": "Industrials",
+    "industry": "Electrical Equipment & Parts",
+    "scoring_profile": "GENERAL",
+    "profile_maturity": "BASELINE",
+    "fundamental_score": 82.5,
+    "technical_score": 85.1,
+    "composite_score": 83.5,
+    "readiness_score": 85.9,
+    "data_confidence": 61.3,
+    "coverage_score": 62.5,
+    "coverage_level": "MODERATE",
+    "ranking_data_ready": true,
+    "data_status": "CAUTION",
+    "data_caution": true,
+    "data_caution_reasons": [
+      "Cash-flow data unavailable",
+      "Reduced raw-source data confidence",
+      "Moderate data coverage"
+    ],
+    "data_warnings": [
+      "Cash-flow data unavailable",
+      "Raw source data confidence is reduced"
+    ],
+    "original_hard_gate_pass": false,
+    "original_gate_reasons": [
+      "Insufficient data quality",
+      "Low data confidence"
+    ],
+    "hard_gate_pass": true,
+    "gate_reasons": [],
+    "production_eligible": true,
+    "classification": "HIGH CONVICTION CANDIDATE",
+    "technical_warnings": [],
+    "ranking_notes": [
+      "Cash-flow data unavailable",
+      "Raw source data confidence is reduced"
+    ]
+  }
+}
