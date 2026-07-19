@@ -2,12 +2,12 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QFrame,
-    QGridLayout,
 )
+
+from app.widgets.search_bar import SearchBar
+from app.widgets.company_card import CompanyCard
+from app.widgets.metric_card import MetricCard
+from app.widgets.score_card import ScoreCard
 
 from services.stock_service import get_stock_data
 from services.fundamental_service import calculate_roce
@@ -25,168 +25,182 @@ class StockExplorer(QWidget):
     def __init__(self):
         super().__init__()
 
+        self.build_ui()
+        self.connect_signals()
+
+    def build_ui(self):
+
         main_layout = QVBoxLayout(self)
 
-        title = QLabel("🔍 Stock Explorer")
-        title.setStyleSheet("font-size:28px;font-weight:bold;")
-        main_layout.addWidget(title)
+        main_layout.setContentsMargins(25, 25, 25, 25)
+        main_layout.setSpacing(18)
 
-        # ---------------------------------------------------
         # Search
-        # ---------------------------------------------------
 
-        search_layout = QHBoxLayout()
+        self.search_bar = SearchBar()
 
-        self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText(
-            "Enter NSE Symbol (Example: INFY)"
-        )
+        main_layout.addWidget(self.search_bar)
 
-        self.search_button = QPushButton("Search")
-        self.search_button.clicked.connect(self.search_stock)
-
-        search_layout.addWidget(self.search_box)
-        search_layout.addWidget(self.search_button)
-
-        main_layout.addLayout(search_layout)
-
-        # ---------------------------------------------------
         # Company Information
-        # ---------------------------------------------------
 
-        company = QFrame()
-        company.setFrameShape(QFrame.StyledPanel)
+        self.company_card = CompanyCard()
 
-        company_layout = QGridLayout(company)
+        main_layout.addWidget(self.company_card)
 
-        company_layout.addWidget(QLabel("Company Name"), 0, 0)
-        self.name_label = QLabel("--")
-        company_layout.addWidget(self.name_label, 0, 1)
+        # Financial Metric Cards
 
-        company_layout.addWidget(QLabel("Sector"), 1, 0)
-        self.sector_label = QLabel("--")
-        company_layout.addWidget(self.sector_label, 1, 1)
+        metrics_layout = QHBoxLayout()
+        metrics_layout.setSpacing(12)
 
-        company_layout.addWidget(QLabel("Industry"), 2, 0)
-        self.industry_label = QLabel("--")
-        company_layout.addWidget(self.industry_label, 2, 1)
+        self.pe_card = MetricCard("PE")
+        self.pb_card = MetricCard("PB")
+        self.roe_card = MetricCard("ROE")
+        self.roce_card = MetricCard("ROCE")
+        self.de_card = MetricCard("Debt / Equity")
 
-        company_layout.addWidget(QLabel("Market Cap"), 3, 0)
-        self.marketcap_label = QLabel("--")
-        company_layout.addWidget(self.marketcap_label, 3, 1)
+        metrics_layout.addWidget(self.pe_card)
+        metrics_layout.addWidget(self.pb_card)
+        metrics_layout.addWidget(self.roe_card)
+        metrics_layout.addWidget(self.roce_card)
+        metrics_layout.addWidget(self.de_card)
 
-        company_layout.addWidget(QLabel("Current Price"), 4, 0)
-        self.price_label = QLabel("--")
-        company_layout.addWidget(self.price_label, 4, 1)
+        main_layout.addLayout(metrics_layout)
 
-        main_layout.addWidget(company)
+        # Alpha Score
 
-        # ---------------------------------------------------
-        # Ratios
-        # ---------------------------------------------------
+        self.score_card = ScoreCard()
 
-        ratios = QFrame()
-        ratios.setFrameShape(QFrame.StyledPanel)
-
-        ratio_layout = QGridLayout(ratios)
-
-        ratio_layout.addWidget(QLabel("PE"), 0, 0)
-        self.pe_label = QLabel("--")
-        ratio_layout.addWidget(self.pe_label, 0, 1)
-
-        ratio_layout.addWidget(QLabel("PB"), 1, 0)
-        self.pb_label = QLabel("--")
-        ratio_layout.addWidget(self.pb_label, 1, 1)
-
-        ratio_layout.addWidget(QLabel("ROE"), 2, 0)
-        self.roe_label = QLabel("--")
-        ratio_layout.addWidget(self.roe_label, 2, 1)
-
-        ratio_layout.addWidget(QLabel("ROCE"), 3, 0)
-        self.roce_label = QLabel("--")
-        ratio_layout.addWidget(self.roce_label, 3, 1)
-
-        ratio_layout.addWidget(QLabel("Debt / Equity"), 4, 0)
-        self.de_label = QLabel("--")
-        ratio_layout.addWidget(self.de_label, 4, 1)
-
-        main_layout.addWidget(ratios)
-
-        self.score = QLabel("Alpha Score : -- /100")
-        self.score.setStyleSheet(
-            "font-size:22px;font-weight:bold;"
-        )
-
-        main_layout.addWidget(self.score)
+        main_layout.addWidget(self.score_card)
 
         main_layout.addStretch()
 
+    def connect_signals(self):
+
+        self.search_bar.search_button.clicked.connect(
+            self.search_stock
+        )
+
+        self.search_bar.search_box.returnPressed.connect(
+            self.search_stock
+        )
+
     def search_stock(self):
 
-        symbol = self.search_box.text().strip()
+        symbol = (
+            self.search_bar
+            .search_box
+            .text()
+            .strip()
+            .upper()
+        )
 
         if not symbol:
             return
 
         data = get_stock_data(symbol)
-        roce = calculate_roce(symbol)
 
         if "error" in data:
-            self.name_label.setText("Stock Not Found")
+
+            self.company_card.updateData(
+                "Stock Not Found",
+                "Please check the NSE symbol",
+                "",
+                "--",
+                "--",
+            )
+
+            self.reset_metrics()
+
             return
 
-        # Company
+        roce = calculate_roce(symbol)
 
-        self.name_label.setText(str(data.get("name", "N/A")))
-        self.sector_label.setText(str(data.get("sector", "N/A")))
-        self.industry_label.setText(str(data.get("industry", "N/A")))
+        self.update_ui(data, roce)
 
-        # Price
+    def update_ui(self, data, roce):
 
-        self.price_label.setText(
-            format_price(data.get("price"))
+        # Company Card
+
+        company = str(
+            data.get("name") or "N/A"
         )
 
-        # Market Cap
-
-        self.marketcap_label.setText(
-            format_market_cap(data.get("market_cap"))
+        sector = str(
+            data.get("sector") or "N/A"
         )
 
-        # PE
-
-        self.pe_label.setText(
-            format_number(data.get("pe"))
+        industry = str(
+            data.get("industry") or "N/A"
         )
 
-        # PB
-
-        self.pb_label.setText(
-            format_number(data.get("pb"))
+        price = format_price(
+            data.get("price")
         )
 
-        # ROE
+        market_cap = format_market_cap(
+            data.get("market_cap")
+        )
 
-        self.roe_label.setText(
+        self.company_card.updateData(
+            company,
+            sector,
+            industry,
+            price,
+            market_cap,
+        )
+
+        # Metric Cards
+
+        self.pe_card.setValue(
+            format_number(
+                data.get("pe")
+            )
+        )
+
+        self.pb_card.setValue(
+            format_number(
+                data.get("pb")
+            )
+        )
+
+        self.roe_card.setValue(
             format_percentage(
                 data.get("roe"),
                 multiply=True,
             )
         )
 
-        # ROCE
-
         if roce is not None:
-            self.roce_label.setText(
-                format_percentage(roce)
+
+            roce_text = format_percentage(
+                roce
             )
+
         else:
-            self.roce_label.setText("N/A")
 
-        # Debt / Equity
+            roce_text = "N/A"
 
-        self.de_label.setText(
+        self.roce_card.setValue(
+            roce_text
+        )
+
+        self.de_card.setValue(
             format_number(
                 data.get("debt_equity")
             )
         )
+
+        # Alpha Score remains inactive until
+        # the real Alpha Score Engine is built.
+
+        self.score_card.setScore(0)
+
+    def reset_metrics(self):
+
+        self.pe_card.setValue("--")
+        self.pb_card.setValue("--")
+        self.roe_card.setValue("--")
+        self.roce_card.setValue("--")
+        self.de_card.setValue("--")
+
+        self.score_card.setScore(0)
