@@ -22,6 +22,10 @@ from services.data_completeness_service import (
     analyze_data_completeness,
 )
 
+from services.data_caution_service import (
+    evaluate_data_caution,
+)
+
 from services.technical_service import (
     get_technical_metrics,
 )
@@ -127,9 +131,6 @@ class ResearchRadarService:
 
             # --------------------------------------------------
             # RAW DATA QUALITY
-            #
-            # Preserved for diagnostic confidence.
-            # This is NOT the only ranking-data gate anymore.
             # --------------------------------------------------
 
             data_quality = (
@@ -140,15 +141,28 @@ class ResearchRadarService:
 
             # --------------------------------------------------
             # DATA COMPLETENESS
-            #
-            # Determines whether sufficient independent
-            # evidence exists for meaningful analysis.
             # --------------------------------------------------
 
             completeness = (
                 analyze_data_completeness(
                     fundamental_data,
                     scoring_profile,
+                )
+            )
+
+            # --------------------------------------------------
+            # DATA CAUTION STATUS
+            #
+            # CLEAN / CAUTION / INSUFFICIENT
+            #
+            # This is a transparency layer only.
+            # It does not alter investment scores.
+            # --------------------------------------------------
+
+            data_caution = (
+                evaluate_data_caution(
+                    data_quality=data_quality,
+                    completeness=completeness,
                 )
             )
 
@@ -201,8 +215,6 @@ class ResearchRadarService:
 
             # --------------------------------------------------
             # ALPHA COMPOSITE
-            #
-            # Existing composite logic is preserved.
             # --------------------------------------------------
 
             alpha = (
@@ -215,12 +227,6 @@ class ResearchRadarService:
 
             # --------------------------------------------------
             # COMPLETENESS-AWARE GATING
-            #
-            # Alpha Composite may reject a company because
-            # the old raw data-quality gate is strict.
-            #
-            # We separate those data-related gate reasons
-            # from genuine investment-quality gate reasons.
             # --------------------------------------------------
 
             original_gate_reasons = list(
@@ -255,14 +261,6 @@ class ResearchRadarService:
 
             # --------------------------------------------------
             # EFFECTIVE HARD GATE
-            #
-            # A stock may proceed when:
-            #
-            # 1. completeness resolver confirms enough data
-            # 2. no genuine non-data hard-gate failure remains
-            #
-            # Missing vendor fields therefore no longer cause
-            # automatic rejection by themselves.
             # --------------------------------------------------
 
             effective_hard_gate_pass = (
@@ -298,10 +296,6 @@ class ResearchRadarService:
                 )
             )
 
-            # If old data-quality confidence is low but the
-            # completeness resolver allows analysis, preserve
-            # that fact as a warning rather than hiding it.
-
             raw_confidence = (
                 data_quality.get(
                     "confidence_score"
@@ -318,8 +312,6 @@ class ResearchRadarService:
                     "Raw source data confidence is reduced"
                 )
 
-            # Remove duplicates while preserving order.
-
             data_warnings = list(
                 dict.fromkeys(
                     data_warnings
@@ -328,10 +320,6 @@ class ResearchRadarService:
 
             # --------------------------------------------------
             # PRODUCTION ELIGIBILITY
-            #
-            # Provisional sector models remain outside the
-            # production ranking pool even when their numerical
-            # score is high.
             # --------------------------------------------------
 
             production_eligible = (
@@ -373,13 +361,6 @@ class ResearchRadarService:
 
             # --------------------------------------------------
             # EFFECTIVE CLASSIFICATION
-            #
-            # Preserve Alpha classification unless the only
-            # reason for REJECT / REVIEW was old data-quality
-            # gating and completeness now allows analysis.
-            #
-            # In that case, classify from the existing score
-            # bands without altering the underlying score.
             # --------------------------------------------------
 
             effective_classification = (
@@ -473,14 +454,14 @@ class ResearchRadarService:
                         "readiness_score"
                     ),
 
-                # Raw data-quality confidence is retained.
+                # Raw data-quality confidence
 
                 "data_confidence":
                     alpha.get(
                         "data_confidence"
                     ),
 
-                # New completeness information.
+                # Completeness information
 
                 "coverage_score":
                     completeness.get(
@@ -495,10 +476,28 @@ class ResearchRadarService:
                 "ranking_data_ready":
                     completeness_ready,
 
+                # Data caution information
+
+                "data_status":
+                    data_caution.get(
+                        "data_status"
+                    ),
+
+                "data_caution":
+                    data_caution.get(
+                        "data_caution"
+                    ),
+
+                "data_caution_reasons":
+                    data_caution.get(
+                        "reasons",
+                        [],
+                    ),
+
                 "data_warnings":
                     data_warnings,
 
-                # Preserve original Alpha gate for diagnostics.
+                # Original Alpha gate diagnostics
 
                 "original_hard_gate_pass":
                     alpha.get(
@@ -508,7 +507,7 @@ class ResearchRadarService:
                 "original_gate_reasons":
                     original_gate_reasons,
 
-                # Effective production gate.
+                # Effective production gate
 
                 "hard_gate_pass":
                     effective_hard_gate_pass,
