@@ -1,0 +1,16 @@
+{
+  "universe_name": "AlphaForge Midcap Smallcap Research Universe",
+  "version": "1.0",
+  "market": "INDIA",
+  "exchange_scope": [
+    "NSE",
+    "BSE"
+  ],
+  "categories": [
+    "MIDCAP",
+    "SMALLCAP"
+  ],
+  "purpose": "Research universe for AlphaForge screening, Research Radar Top 30 and Alpha 12 selection",
+  "membership_policy": "Category membership must be based on an identified market-cap classification source and retained with an as-of date. Historical classification must not be silently treated as current.",
+  "auto_investment": false
+}
