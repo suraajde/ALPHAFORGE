@@ -19,3 +19,5 @@ venv/
 # Windows
 Thumbs.db
 Desktop.ini
+# AlphaForge runtime cache
+data/cache/
