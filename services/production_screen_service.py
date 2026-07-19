@@ -772,16 +772,252 @@ class ProductionScreenService:
                 })
 
         # --------------------------------------------------
-        # RANK
+        # CONTINUOUS PRE-SCREEN RANKING
+        #
+        # market_health_score remains the interpretable
+        # absolute 0-100 market-health score.
+        #
+        # screen_rank_score provides continuous ranking
+        # discrimination when multiple stocks share the
+        # same capped market_health_score.
+        #
+        # This score is used only for the research funnel.
+        # It is NOT the final AlphaForge investment score.
+        # --------------------------------------------------
+
+        for item in screened:
+
+            health = (
+                self._safe_float(
+                    item.get(
+                        "market_health_score"
+                    )
+                )
+                or 0
+            )
+
+            return_3m = (
+                self._safe_float(
+                    item.get(
+                        "return_3m"
+                    )
+                )
+                or 0
+            )
+
+            return_6m = (
+                self._safe_float(
+                    item.get(
+                        "return_6m"
+                    )
+                )
+                or 0
+            )
+
+            return_1y = (
+                self._safe_float(
+                    item.get(
+                        "return_1y"
+                    )
+                )
+                or 0
+            )
+
+            drawdown = (
+                self._safe_float(
+                    item.get(
+                        "max_drawdown"
+                    )
+                )
+            )
+
+            volatility = (
+                self._safe_float(
+                    item.get(
+                        "volatility"
+                    )
+                )
+            )
+
+            price = (
+                self._safe_float(
+                    item.get(
+                        "latest_price"
+                    )
+                )
+            )
+
+            ma200 = (
+                self._safe_float(
+                    item.get(
+                        "ma200"
+                    )
+                )
+            )
+
+            # ----------------------------------------------
+            # BASE MARKET HEALTH
+            # ----------------------------------------------
+
+            rank_score = (
+                health * 1.00
+            )
+
+            # ----------------------------------------------
+            # CONTINUOUS MOMENTUM CONTRIBUTION
+            #
+            # Contributions are deliberately capped so
+            # extreme momentum cannot dominate the funnel.
+            # ----------------------------------------------
+
+            rank_score += max(
+                -8,
+                min(
+                    8,
+                    return_3m * 0.12,
+                ),
+            )
+
+            rank_score += max(
+                -10,
+                min(
+                    10,
+                    return_6m * 0.10,
+                ),
+            )
+
+            rank_score += max(
+                -8,
+                min(
+                    8,
+                    return_1y * 0.04,
+                ),
+            )
+
+            # ----------------------------------------------
+            # DRAWDOWN RESILIENCE
+            # ----------------------------------------------
+
+            if drawdown is not None:
+
+                drawdown_component = (
+                    6
+                    + (
+                        drawdown
+                        * 0.12
+                    )
+                )
+
+                rank_score += max(
+                    -6,
+                    min(
+                        6,
+                        drawdown_component,
+                    ),
+                )
+
+            # ----------------------------------------------
+            # VOLATILITY DISCIPLINE
+            #
+            # This is only a modest influence. We do not
+            # want to automatically reject quality growth
+            # stocks simply because they are more volatile.
+            # ----------------------------------------------
+
+            if volatility is not None:
+
+                volatility_component = (
+                    5
+                    - (
+                        volatility
+                        * 0.08
+                    )
+                )
+
+                rank_score += max(
+                    -5,
+                    min(
+                        5,
+                        volatility_component,
+                    ),
+                )
+
+            # ----------------------------------------------
+            # 200-DAY TREND POSITION
+            # ----------------------------------------------
+
+            if (
+                price is not None
+                and ma200 is not None
+                and ma200 > 0
+            ):
+
+                distance_200 = (
+                    (
+                        price
+                        / ma200
+                    )
+                    - 1
+                ) * 100
+
+                rank_score += max(
+                    -6,
+                    min(
+                        6,
+                        distance_200
+                        * 0.12,
+                    ),
+                )
+
+            item[
+                "screen_rank_score"
+            ] = round(
+                rank_score,
+                4,
+            )
+
+        # --------------------------------------------------
+        # FINAL PRE-SCREEN SORT
+        #
+        # Primary:
+        #   Continuous screen_rank_score
+        #
+        # Tie-breakers:
+        #   Market health
+        #   6-month return
+        #   Symbol for deterministic ordering
         # --------------------------------------------------
 
         screened.sort(
 
-            key=lambda item:
+            key=lambda item: (
+
+                item.get(
+                    "screen_rank_score",
+                    0,
+                ),
+
                 item.get(
                     "market_health_score",
                     0,
                 ),
+
+                (
+                    item.get(
+                        "return_6m"
+                    )
+                    if item.get(
+                        "return_6m"
+                    ) is not None
+                    else -999
+                ),
+
+                item.get(
+                    "symbol",
+                    "",
+                ),
+
+            ),
 
             reverse=True,
 
