@@ -363,13 +363,54 @@ class ResearchRadar(QWidget):
             columns
         )
 
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
+        header_view = (
+            self.table.horizontalHeader()
         )
 
-        self.table.horizontalHeader().setStretchLastSection(
-            True
+        header_view.setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
         )
+
+        header_view.setStretchLastSection(
+            False
+        )
+
+        # --------------------------------------------------
+        # PRODUCTION RADAR COLUMN WIDTHS
+        #
+        # Keep compact analytical columns readable while
+        # giving company/classification useful space.
+        # Horizontal scrolling remains available.
+        # --------------------------------------------------
+
+        column_widths = {
+
+            0: 55,    # Rank
+            1: 100,   # Symbol
+            2: 90,    # Category
+            3: 190,   # Company
+            4: 145,   # Sector
+            5: 105,   # Fundamental
+            6: 95,    # Technical
+            7: 95,    # Composite
+            8: 95,    # Readiness
+            9: 110,   # Market Health
+            10: 95,   # Confidence
+            11: 90,   # Coverage
+            12: 110,  # Data Status
+            13: 210,  # Classification
+
+        }
+
+        for (
+            column_index,
+            column_width,
+        ) in column_widths.items():
+
+            self.table.setColumnWidth(
+                column_index,
+                column_width,
+            )
 
         self.table.setAlternatingRowColors(
             True
@@ -1199,13 +1240,47 @@ class ResearchRadar(QWidget):
                 if (
                     field
                     == "company_name"
-                    and not value
                 ):
 
-                    value = stock.get(
-                        "universe_company",
-                        "",
+                    company_text = (
+                        str(value).strip()
+                        if value is not None
+                        else ""
                     )
+
+                    if (
+                        not company_text
+                        or company_text.upper()
+                        in {
+                            "N/A",
+                            "NA",
+                            "NONE",
+                            "NULL",
+                            "-",
+                        }
+                    ):
+
+                        universe_company = (
+                            stock.get(
+                                "universe_company",
+                                ""
+                            )
+                        )
+
+                        universe_company_text = (
+                            str(
+                                universe_company
+                            ).strip()
+                            if universe_company
+                            is not None
+                            else ""
+                        )
+
+                        if universe_company_text:
+
+                            value = (
+                                universe_company_text
+                            )
 
                 # ------------------------------------------
                 # CLASSIFICATION MAY BE STRUCTURED
