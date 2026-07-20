@@ -3,6 +3,7 @@ from __future__ import annotations
 from services.universe_service import UniverseService
 from services.production_screen_service import ProductionScreenService
 from services.production_scan_orchestrator import ProductionScanOrchestrator
+from services.alpha12_selection_service import Alpha12SelectionService
 
 
 class ProductionRadarPipeline:
@@ -757,6 +758,38 @@ class ProductionRadarPipeline:
         ]
 
         # --------------------------------------------------
+        # STAGE 6
+        # ALPHA 12 PORTFOLIO SELECTION
+        #
+        # IMPORTANT:
+        # - Research Radar Top 30 remains unchanged.
+        # - Alpha 12 is a downstream selection layer.
+        # - Only enriched production-ranked candidates are
+        #   supplied to the Alpha 12 engine.
+        # - No upstream score or Radar rank is modified.
+        # --------------------------------------------------
+
+        alpha12_result = (
+            Alpha12SelectionService(
+                target_count=12,
+                reserve_count=8,
+            )
+            .select(
+                ranked
+            )
+        )
+
+        alpha12 = alpha12_result.get(
+            "selected",
+            [],
+        )
+
+        alpha12_reserves = alpha12_result.get(
+            "reserves",
+            [],
+        )
+
+        # --------------------------------------------------
         # FINAL RESULT
         # --------------------------------------------------
 
@@ -858,6 +891,49 @@ class ProductionRadarPipeline:
 
             "ranked":
                 ranked,
+
+            # ----------------------------------------------
+            # ALPHA 12 PORTFOLIO SELECTION
+            # ----------------------------------------------
+
+            "alpha12":
+                alpha12,
+
+            "alpha12_reserves":
+                alpha12_reserves,
+
+            "alpha12_count":
+                alpha12_result.get(
+                    "selected_count",
+                    0,
+                ),
+
+            "alpha12_reserve_count":
+                alpha12_result.get(
+                    "reserve_count",
+                    0,
+                ),
+
+            "alpha12_midcap_count":
+                alpha12_result.get(
+                    "selected_midcap_count",
+                    0,
+                ),
+
+            "alpha12_smallcap_count":
+                alpha12_result.get(
+                    "selected_smallcap_count",
+                    0,
+                ),
+
+            "alpha12_sector_counts":
+                alpha12_result.get(
+                    "sector_counts",
+                    {},
+                ),
+
+            "alpha12_selection_result":
+                alpha12_result,
 
             "review":
                 review,
