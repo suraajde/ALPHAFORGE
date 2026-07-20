@@ -10,41 +10,46 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QMessageBox,
     QFrame,
+    QProgressBar,
 )
 
 from services.universe_service import UniverseService
-from services.research_radar_service import ResearchRadarService
+from services.production_radar_pipeline import ProductionRadarPipeline
 
 
 # ==========================================================
-# RADAR BACKGROUND WORKER
+# PRODUCTION RADAR BACKGROUND WORKER
 # ==========================================================
 
 class RadarWorker(QThread):
 
     finished_scan = Signal(dict)
     failed_scan = Signal(str)
+    progress_update = Signal(dict)
 
     def __init__(
         self,
-        symbols,
         force_refresh=False,
     ):
         super().__init__()
 
-        self.symbols = symbols
         self.force_refresh = force_refresh
 
     def run(self):
 
         try:
 
-            service = ResearchRadarService()
+            pipeline = ProductionRadarPipeline(
+                candidate_limit=120,
+                radar_limit=30,
+                screen_batch_size=100,
+                deep_batch_size=10,
+            )
 
-            result = service.rank_symbols(
-                self.symbols,
-                limit=30,
+            result = pipeline.run(
                 force_refresh=self.force_refresh,
+                resume=True,
+                progress_callback=self._emit_progress,
             )
 
             self.finished_scan.emit(
@@ -55,6 +60,20 @@ class RadarWorker(QThread):
 
             self.failed_scan.emit(
                 str(exc)
+            )
+
+    def _emit_progress(
+        self,
+        state,
+    ):
+
+        if isinstance(
+            state,
+            dict,
+        ):
+
+            self.progress_update.emit(
+                state
             )
 
 
@@ -126,7 +145,9 @@ class MetricCard(QFrame):
 
 class ResearchRadar(QWidget):
 
-    def __init__(self):
+    def __init__(
+        self,
+    ):
 
         super().__init__()
 
@@ -158,8 +179,8 @@ class ResearchRadar(QWidget):
         )
 
         subtitle = QLabel(
-            "Production universe screening and "
-            "Top-30 investment research candidates"
+            "400-stock Midcap + Smallcap production universe "
+            "→ Pre-screen 120 → Deep Research → Global Top 30"
         )
 
         subtitle.setStyleSheet(
@@ -182,7 +203,7 @@ class ResearchRadar(QWidget):
         header.addStretch()
 
         self.scan_btn = QPushButton(
-            "Run Radar Scan"
+            "Run Production Radar"
         )
 
         self.refresh_btn = QPushButton(
@@ -199,7 +220,7 @@ class ResearchRadar(QWidget):
             )
 
             button.setMinimumWidth(
-                140
+                160
             )
 
         header.addWidget(
@@ -225,10 +246,41 @@ class ResearchRadar(QWidget):
         self.status_label.setStyleSheet(
             "padding: 8px;"
             "color: #374151;"
+            "font-weight: 500;"
         )
 
         root.addWidget(
             self.status_label
+        )
+
+        # ==================================================
+        # PROGRESS BAR
+        # ==================================================
+
+        self.progress_bar = QProgressBar()
+
+        self.progress_bar.setMinimum(
+            0
+        )
+
+        self.progress_bar.setMaximum(
+            120
+        )
+
+        self.progress_bar.setValue(
+            0
+        )
+
+        self.progress_bar.setFormat(
+            "Ready"
+        )
+
+        self.progress_bar.setTextVisible(
+            True
+        )
+
+        root.addWidget(
+            self.progress_bar
         )
 
         # ==================================================
@@ -241,28 +293,33 @@ class ResearchRadar(QWidget):
             "Universe"
         )
 
+        self.candidate_card = MetricCard(
+            "Pre-Screen Candidates"
+        )
+
         self.analyzed_card = MetricCard(
-            "Analyzed"
+            "Deep Analyzed"
         )
 
         self.eligible_card = MetricCard(
             "Production Eligible"
         )
 
-        self.review_card = MetricCard(
-            "Review Pool"
+        self.cache_card = MetricCard(
+            "Fresh Cache"
         )
 
-        self.cache_card = MetricCard(
-            "Cache Hits"
+        self.error_card = MetricCard(
+            "Errors"
         )
 
         for card in (
             self.universe_card,
+            self.candidate_card,
             self.analyzed_card,
             self.eligible_card,
-            self.review_card,
             self.cache_card,
+            self.error_card,
         ):
 
             cards.addWidget(
@@ -283,15 +340,18 @@ class ResearchRadar(QWidget):
 
             "Rank",
             "Symbol",
+            "Category",
             "Company",
             "Sector",
             "Fundamental",
             "Technical",
             "Composite",
             "Readiness",
+            "Market Health",
             "Confidence",
             "Coverage",
             "Data Status",
+            "Classification",
 
         ]
 
@@ -357,21 +417,53 @@ class ResearchRadar(QWidget):
         try:
 
             universe_result = (
-                self.universe_service.get_symbols()
+                self.universe_service
+                .get_enabled_stocks()
             )
 
-            symbols = universe_result.get(
-                "symbols",
+            stocks = universe_result.get(
+                "stocks",
                 [],
             )
 
+            midcap_count = sum(
+
+                1
+
+                for stock in stocks
+
+                if stock.get(
+                    "category"
+                ) == "MIDCAP"
+
+            )
+
+            smallcap_count = sum(
+
+                1
+
+                for stock in stocks
+
+                if stock.get(
+                    "category"
+                ) == "SMALLCAP"
+
+            )
+
             self.universe_card.set_value(
-                len(symbols)
+                len(stocks)
             )
 
             self.status_label.setText(
-                f"Production universe loaded: "
-                f"{len(symbols)} stocks"
+
+                "Production universe ready | "
+
+                f"{len(stocks)} stocks | "
+
+                f"MIDCAP {midcap_count} | "
+
+                f"SMALLCAP {smallcap_count}"
+
             )
 
         except Exception as exc:
@@ -386,7 +478,7 @@ class ResearchRadar(QWidget):
 
 
     # ======================================================
-    # START RADAR SCAN
+    # START PRODUCTION RADAR
     # ======================================================
 
     def start_scan(
@@ -406,21 +498,58 @@ class ResearchRadar(QWidget):
             return
 
         # --------------------------------------------------
-        # LOAD PRODUCTION UNIVERSE
+        # FORCE REFRESH WARNING
+        #
+        # Force Refresh can trigger fresh deep analysis
+        # for all 120 shortlisted candidates.
+        # --------------------------------------------------
+
+        if force_refresh:
+
+            answer = QMessageBox.question(
+
+                self,
+
+                "Force Refresh Production Radar",
+
+                "Force Refresh will ignore fresh Research Radar "
+                "cache and may perform live deep analysis for all "
+                "120 shortlisted candidates.\n\n"
+                "This can take significant time and depends on "
+                "external free-data sources.\n\n"
+                "Continue?",
+
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No,
+
+                QMessageBox.StandardButton.No,
+
+            )
+
+            if (
+                answer
+                != QMessageBox.StandardButton.Yes
+            ):
+
+                return
+
+        # --------------------------------------------------
+        # VERIFY UNIVERSE
         # --------------------------------------------------
 
         try:
 
             universe_result = (
-                self.universe_service.get_symbols()
+                self.universe_service
+                .get_enabled_stocks()
             )
 
-            symbols = universe_result.get(
-                "symbols",
+            stocks = universe_result.get(
+                "stocks",
                 [],
             )
 
-            if not symbols:
+            if not stocks:
 
                 QMessageBox.warning(
 
@@ -428,7 +557,7 @@ class ResearchRadar(QWidget):
 
                     "Research Radar",
 
-                    "No enabled symbols found "
+                    "No enabled stocks found "
                     "in the production universe.",
 
                 )
@@ -450,7 +579,7 @@ class ResearchRadar(QWidget):
             return
 
         # --------------------------------------------------
-        # DISABLE CONTROLS DURING SCAN
+        # RESET UI
         # --------------------------------------------------
 
         self.scan_btn.setEnabled(
@@ -461,21 +590,62 @@ class ResearchRadar(QWidget):
             False
         )
 
+        self.candidate_card.set_value(
+            0
+        )
+
+        self.analyzed_card.set_value(
+            0
+        )
+
+        self.eligible_card.set_value(
+            0
+        )
+
+        self.cache_card.set_value(
+            0
+        )
+
+        self.error_card.set_value(
+            0
+        )
+
+        self.progress_bar.setMaximum(
+            120
+        )
+
+        self.progress_bar.setValue(
+            0
+        )
+
+        self.progress_bar.setFormat(
+            "Starting production pipeline..."
+        )
+
+        self.table.setSortingEnabled(
+            False
+        )
+
+        self.table.clearContents()
+
+        self.table.setRowCount(
+            0
+        )
+
         mode = (
 
-            "Force-refreshing"
+            "Force-refresh production scan"
 
             if force_refresh
 
-            else "Scanning"
+            else "Production scan"
 
         )
 
         self.status_label.setText(
 
-            f"{mode} "
-            f"{len(symbols)} "
-            f"universe stocks..."
+            f"{mode} starting | "
+            f"Universe {len(stocks)}"
 
         )
 
@@ -484,11 +654,12 @@ class ResearchRadar(QWidget):
         # --------------------------------------------------
 
         self.worker = RadarWorker(
+            force_refresh=
+                force_refresh
+        )
 
-            symbols,
-
-            force_refresh,
-
+        self.worker.progress_update.connect(
+            self.scan_progress
         )
 
         self.worker.finished_scan.connect(
@@ -500,6 +671,245 @@ class ResearchRadar(QWidget):
         )
 
         self.worker.start()
+
+
+    # ======================================================
+    # SCAN PROGRESS
+    # ======================================================
+
+    def scan_progress(
+        self,
+        state,
+    ):
+
+        stage = state.get(
+            "stage",
+            ""
+        )
+
+        message = state.get(
+            "message",
+            ""
+        )
+
+        # --------------------------------------------------
+        # UNIVERSE
+        # --------------------------------------------------
+
+        if stage == "UNIVERSE":
+
+            self.status_label.setText(
+                "Loading 400-stock production universe..."
+            )
+
+            self.progress_bar.setValue(
+                0
+            )
+
+            self.progress_bar.setFormat(
+                "Loading universe..."
+            )
+
+        # --------------------------------------------------
+        # PRE-SCREEN
+        # --------------------------------------------------
+
+        elif stage == "PRE_SCREEN":
+
+            universe_count = state.get(
+                "universe_count",
+                0,
+            )
+
+            self.universe_card.set_value(
+                universe_count
+            )
+
+            self.status_label.setText(
+
+                f"Market pre-screen running | "
+                f"Universe {universe_count}"
+
+            )
+
+            self.progress_bar.setValue(
+                0
+            )
+
+            self.progress_bar.setFormat(
+                "Pre-screening production universe..."
+            )
+
+        # --------------------------------------------------
+        # DEEP SCAN START
+        # --------------------------------------------------
+
+        elif stage == "DEEP_SCAN_START":
+
+            candidate_count = state.get(
+                "candidate_count",
+                0,
+            )
+
+            cache_fresh = state.get(
+                "cache_fresh",
+                0,
+            )
+
+            cache_expired = state.get(
+                "cache_expired",
+                0,
+            )
+
+            cache_missing = state.get(
+                "cache_missing",
+                0,
+            )
+
+            self.candidate_card.set_value(
+                candidate_count
+            )
+
+            self.cache_card.set_value(
+                cache_fresh
+            )
+
+            self.progress_bar.setMaximum(
+                max(
+                    candidate_count,
+                    1,
+                )
+            )
+
+            self.progress_bar.setValue(
+                0
+            )
+
+            self.progress_bar.setFormat(
+
+                f"Deep analysis 0/"
+                f"{candidate_count}"
+
+            )
+
+            self.status_label.setText(
+
+                f"Pre-screen complete | "
+                f"Candidates {candidate_count} | "
+                f"Fresh cache {cache_fresh} | "
+                f"Expired {cache_expired} | "
+                f"Live needed {cache_missing}"
+
+            )
+
+        # --------------------------------------------------
+        # DEEP SCAN PROGRESS
+        # --------------------------------------------------
+
+        elif stage == "DEEP_SCAN":
+
+            processed = state.get(
+                "processed_count",
+                0,
+            )
+
+            total = state.get(
+                "total_count",
+                0,
+            )
+
+            remaining = state.get(
+                "remaining_count",
+                0,
+            )
+
+            self.analyzed_card.set_value(
+                processed
+            )
+
+            self.progress_bar.setMaximum(
+                max(
+                    total,
+                    1,
+                )
+            )
+
+            self.progress_bar.setValue(
+                min(
+                    processed,
+                    max(
+                        total,
+                        1,
+                    ),
+                )
+            )
+
+            self.progress_bar.setFormat(
+
+                f"Deep analysis "
+                f"{processed}/{total}"
+
+            )
+
+            self.status_label.setText(
+
+                f"Deep Research Radar running | "
+                f"Processed {processed}/{total} | "
+                f"Remaining {remaining}"
+
+            )
+
+        # --------------------------------------------------
+        # COMPLETE
+        # --------------------------------------------------
+
+        elif stage == "COMPLETE":
+
+            candidate_count = state.get(
+                "candidate_count",
+                0,
+            )
+
+            processed_count = state.get(
+                "processed_count",
+                candidate_count,
+            )
+
+            ranked_count = state.get(
+                "ranked_count",
+                0,
+            )
+
+            self.progress_bar.setMaximum(
+                max(
+                    candidate_count,
+                    1,
+                )
+            )
+
+            self.progress_bar.setValue(
+                max(
+                    processed_count,
+                    candidate_count,
+                )
+            )
+
+            self.progress_bar.setFormat(
+                "Production Radar complete"
+            )
+
+            self.status_label.setText(
+
+                f"Production Radar complete | "
+                f"Top candidates {ranked_count}"
+
+            )
+
+        elif message:
+
+            self.status_label.setText(
+                str(message)
+            )
 
 
     # ======================================================
@@ -520,47 +930,102 @@ class ResearchRadar(QWidget):
         )
 
         # --------------------------------------------------
+        # PIPELINE ERROR RESULT
+        # --------------------------------------------------
+
+        if (
+            result.get(
+                "status"
+            )
+            != "OK"
+        ):
+
+            error = result.get(
+                "error",
+                "Unknown production pipeline error.",
+            )
+
+            self.status_label.setText(
+                "Production Radar failed."
+            )
+
+            QMessageBox.critical(
+
+                self,
+
+                "Production Radar Error",
+
+                str(error),
+
+            )
+
+            return
+
+        # --------------------------------------------------
         # SUMMARY METRICS
         # --------------------------------------------------
 
+        universe_count = result.get(
+            "universe_count",
+            0,
+        )
+
+        candidate_count = result.get(
+            "candidate_count",
+            0,
+        )
+
+        processed_count = result.get(
+            "processed_count",
+            0,
+        )
+
+        eligible_count = result.get(
+            "eligible_count",
+            0,
+        )
+
+        error_count = result.get(
+            "error_count",
+            0,
+        )
+
+        cache_summary = result.get(
+            "cache_summary",
+            {},
+        )
+
+        cache_fresh = cache_summary.get(
+            "fresh_count",
+            0,
+        )
+
+        self.universe_card.set_value(
+            universe_count
+        )
+
+        self.candidate_card.set_value(
+            candidate_count
+        )
+
         self.analyzed_card.set_value(
-
-            result.get(
-                "analyzed_count",
-                0,
-            )
-
+            processed_count
         )
 
         self.eligible_card.set_value(
-
-            result.get(
-                "eligible_count",
-                0,
-            )
-
-        )
-
-        self.review_card.set_value(
-
-            result.get(
-                "review_count",
-                0,
-            )
-
+            eligible_count
         )
 
         self.cache_card.set_value(
+            cache_fresh
+        )
 
-            result.get(
-                "cache_hits",
-                0,
-            )
-
+        self.error_card.set_value(
+            error_count
         )
 
         # --------------------------------------------------
-        # RANKED TOP-30
+        # GLOBAL TOP-30
         # --------------------------------------------------
 
         ranked = result.get(
@@ -573,29 +1038,57 @@ class ResearchRadar(QWidget):
         )
 
         # --------------------------------------------------
+        # FINAL PROGRESS
+        # --------------------------------------------------
+
+        self.progress_bar.setMaximum(
+            max(
+                candidate_count,
+                1,
+            )
+        )
+
+        self.progress_bar.setValue(
+            candidate_count
+        )
+
+        self.progress_bar.setFormat(
+            "Production Radar complete"
+        )
+
+        # --------------------------------------------------
+        # CATEGORY COUNTS
+        # --------------------------------------------------
+
+        midcap_candidates = result.get(
+            "candidate_midcap_count",
+            0,
+        )
+
+        smallcap_candidates = result.get(
+            "candidate_smallcap_count",
+            0,
+        )
+
+        # --------------------------------------------------
         # STATUS SUMMARY
         # --------------------------------------------------
 
-        errors = result.get(
-            "errors",
-            [],
-        )
-
         self.status_label.setText(
 
-            "Scan complete | "
+            "Production Radar complete | "
 
-            f"Top candidates: "
-            f"{len(ranked)} | "
+            f"Universe {universe_count} → "
 
-            f"Live analyses: "
-            f"{result.get('live_analyses', 0)} | "
+            f"Pre-screen {candidate_count} "
+            f"(M {midcap_candidates} / "
+            f"S {smallcap_candidates}) → "
 
-            f"Cache hits: "
-            f"{result.get('cache_hits', 0)} | "
+            f"Deep analyzed {processed_count} → "
 
-            f"Errors: "
-            f"{len(errors)}"
+            f"Top {len(ranked)} | "
+
+            f"Errors {error_count}"
 
         )
 
@@ -617,8 +1110,12 @@ class ResearchRadar(QWidget):
             True
         )
 
+        self.progress_bar.setFormat(
+            "Production Radar failed"
+        )
+
         self.status_label.setText(
-            "Radar scan failed."
+            "Production Radar scan failed."
         )
 
         QMessageBox.critical(
@@ -627,13 +1124,13 @@ class ResearchRadar(QWidget):
 
             "Research Radar Error",
 
-            error,
+            str(error),
 
         )
 
 
     # ======================================================
-    # POPULATE RADAR TABLE
+    # POPULATE GLOBAL TOP-30 TABLE
     # ======================================================
 
     def populate_table(
@@ -655,17 +1152,32 @@ class ResearchRadar(QWidget):
 
             "rank",
             "symbol",
+            "category",
             "company_name",
             "sector",
             "fundamental_score",
             "technical_score",
             "composite_score",
             "readiness_score",
+            "market_health_score",
             "data_confidence",
             "coverage_score",
             "data_status",
+            "classification",
 
         ]
+
+        numeric_columns = {
+
+            0,
+            5,
+            6,
+            7,
+            8,
+            9,
+            11,
+
+        }
 
         for row, stock in enumerate(
             ranked
@@ -679,6 +1191,50 @@ class ResearchRadar(QWidget):
                     field,
                     "",
                 )
+
+                # ------------------------------------------
+                # COMPANY FALLBACK
+                # ------------------------------------------
+
+                if (
+                    field
+                    == "company_name"
+                    and not value
+                ):
+
+                    value = stock.get(
+                        "universe_company",
+                        "",
+                    )
+
+                # ------------------------------------------
+                # CLASSIFICATION MAY BE STRUCTURED
+                # ------------------------------------------
+
+                if (
+                    field
+                    == "classification"
+                    and isinstance(
+                        value,
+                        dict,
+                    )
+                ):
+
+                    value = (
+
+                        value.get(
+                            "label"
+                        )
+
+                        or value.get(
+                            "classification"
+                        )
+
+                        or str(
+                            value
+                        )
+
+                    )
 
                 if value is None:
 
@@ -697,14 +1253,16 @@ class ResearchRadar(QWidget):
                     str(value)
                 )
 
-                if column in (
-                    0,
-                    4,
-                    5,
-                    6,
-                    7,
-                    9,
+                if (
+                    column
+                    in numeric_columns
                 ):
+
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignCenter
+                    )
+
+                if column == 2:
 
                     item.setTextAlignment(
                         Qt.AlignmentFlag.AlignCenter
