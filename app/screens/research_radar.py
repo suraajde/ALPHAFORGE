@@ -153,6 +153,13 @@ class ResearchRadar(QWidget):
 
         self.worker = None
 
+        # Last successful production result.
+        #
+        # Top 30 / Alpha 12 / Reserve 8 views all use this
+        # same in-memory result. Switching views therefore
+        # never triggers another market-data scan.
+        self.last_result = None
+
         self.universe_service = (
             UniverseService()
         )
@@ -331,6 +338,52 @@ class ResearchRadar(QWidget):
         )
 
         # ==================================================
+        # RADAR VIEW SELECTOR
+        # ==================================================
+
+        view_bar = QHBoxLayout()
+
+        self.top30_btn = QPushButton(
+            "Research Radar Top 30"
+        )
+
+        self.alpha12_btn = QPushButton(
+            "Alpha 12"
+        )
+
+        self.reserve8_btn = QPushButton(
+            "Reserve 8"
+        )
+
+        for button in (
+            self.top30_btn,
+            self.alpha12_btn,
+            self.reserve8_btn,
+        ):
+
+            button.setCheckable(
+                True
+            )
+
+            button.setMinimumHeight(
+                36
+            )
+
+            view_bar.addWidget(
+                button
+            )
+
+        view_bar.addStretch()
+
+        self.top30_btn.setChecked(
+            True
+        )
+
+        root.addLayout(
+            view_bar
+        )
+
+        # ==================================================
         # RADAR TABLE
         # ==================================================
 
@@ -437,6 +490,24 @@ class ResearchRadar(QWidget):
         self.refresh_btn.clicked.connect(
             lambda: self.start_scan(
                 True
+            )
+        )
+
+        self.top30_btn.clicked.connect(
+            lambda: self.show_result_view(
+                "TOP30"
+            )
+        )
+
+        self.alpha12_btn.clicked.connect(
+            lambda: self.show_result_view(
+                "ALPHA12"
+            )
+        )
+
+        self.reserve8_btn.clicked.connect(
+            lambda: self.show_result_view(
+                "RESERVE8"
             )
         )
 
@@ -1003,6 +1074,12 @@ class ResearchRadar(QWidget):
             return
 
         # --------------------------------------------------
+        # STORE SUCCESSFUL PRODUCTION RESULT
+        # --------------------------------------------------
+
+        self.last_result = result
+
+        # --------------------------------------------------
         # SUMMARY METRICS
         # --------------------------------------------------
 
@@ -1072,6 +1149,10 @@ class ResearchRadar(QWidget):
         ranked = result.get(
             "ranked",
             [],
+        )
+
+        self._set_active_view_button(
+            "TOP30"
         )
 
         self.populate_table(
@@ -1171,6 +1252,327 @@ class ResearchRadar(QWidget):
 
 
     # ======================================================
+    # RESULT VIEW MANAGEMENT
+    # ======================================================
+
+    def _set_active_view_button(
+        self,
+        view_name,
+    ):
+
+        self.top30_btn.setChecked(
+            view_name == "TOP30"
+        )
+
+        self.alpha12_btn.setChecked(
+            view_name == "ALPHA12"
+        )
+
+        self.reserve8_btn.setChecked(
+            view_name == "RESERVE8"
+        )
+
+
+    def show_result_view(
+        self,
+        view_name,
+    ):
+
+        if not isinstance(
+            self.last_result,
+            dict,
+        ):
+
+            self.status_label.setText(
+                "Run Production Radar first."
+            )
+
+            self._set_active_view_button(
+                "TOP30"
+            )
+
+            return
+
+        self._set_active_view_button(
+            view_name
+        )
+
+        if view_name == "ALPHA12":
+
+            rows = self.last_result.get(
+                "alpha12",
+                [],
+            )
+
+            self.populate_alpha12_table(
+                rows,
+                reserve=False,
+            )
+
+            self.status_label.setText(
+                f"Alpha 12 | "
+                f"{len(rows)} selected investment candidates"
+            )
+
+            return
+
+        if view_name == "RESERVE8":
+
+            rows = self.last_result.get(
+                "alpha12_reserves",
+                [],
+            )
+
+            self.populate_alpha12_table(
+                rows,
+                reserve=True,
+            )
+
+            self.status_label.setText(
+                f"Alpha 12 Reserve Pool | "
+                f"{len(rows)} replacement candidates"
+            )
+
+            return
+
+        rows = self.last_result.get(
+            "ranked",
+            [],
+        )
+
+        self.populate_table(
+            rows
+        )
+
+        self.status_label.setText(
+            f"Research Radar Top {len(rows)}"
+        )
+
+
+    # ======================================================
+    # POPULATE ALPHA 12 / RESERVE TABLE
+    # ======================================================
+
+    def populate_alpha12_table(
+        self,
+        rows,
+        reserve=False,
+    ):
+
+        self.table.setSortingEnabled(
+            False
+        )
+
+        self.table.clearContents()
+
+        if reserve:
+
+            columns = [
+
+                "Reserve Rank",
+                "Radar Rank",
+                "Symbol",
+                "Category",
+                "Company",
+                "Sector",
+                "Composite",
+                "Alpha Base",
+                "Sector Penalty",
+                "Adjusted Alpha",
+                "Reason",
+
+            ]
+
+            rank_field = (
+                "reserve_rank"
+            )
+
+        else:
+
+            columns = [
+
+                "Alpha Rank",
+                "Radar Rank",
+                "Symbol",
+                "Category",
+                "Company",
+                "Sector",
+                "Composite",
+                "Alpha Base",
+                "Sector Penalty",
+                "Adjusted Alpha",
+                "Reason",
+
+            ]
+
+            rank_field = (
+                "alpha12_rank"
+            )
+
+        fields = [
+
+            rank_field,
+            "radar_rank",
+            "symbol",
+            "category",
+            "company_name",
+            "sector",
+            "composite_score",
+            "alpha12_base_score",
+            "sector_concentration_penalty",
+            "alpha12_selection_score",
+            "selection_reason",
+
+        ]
+
+        self.table.setColumnCount(
+            len(columns)
+        )
+
+        self.table.setHorizontalHeaderLabels(
+            columns
+        )
+
+        self.table.setRowCount(
+            len(rows)
+        )
+
+        column_widths = {
+
+            0: 90,
+            1: 85,
+            2: 105,
+            3: 95,
+            4: 200,
+            5: 150,
+            6: 100,
+            7: 100,
+            8: 115,
+            9: 115,
+            10: 360,
+
+        }
+
+        for (
+            column_index,
+            column_width,
+        ) in column_widths.items():
+
+            self.table.setColumnWidth(
+                column_index,
+                column_width,
+            )
+
+        numeric_columns = {
+
+            0,
+            1,
+            6,
+            7,
+            8,
+            9,
+
+        }
+
+        for row_index, stock in enumerate(
+            rows
+        ):
+
+            for column_index, field in enumerate(
+                fields
+            ):
+
+                value = stock.get(
+                    field,
+                    "",
+                )
+
+                # ------------------------------------------
+                # COMPANY FALLBACK
+                # ------------------------------------------
+
+                if field == "company_name":
+
+                    company_text = (
+                        str(value).strip()
+                        if value is not None
+                        else ""
+                    )
+
+                    if (
+                        not company_text
+                        or company_text.upper()
+                        in {
+                            "N/A",
+                            "NA",
+                            "NONE",
+                            "NULL",
+                            "-",
+                        }
+                    ):
+
+                        value = stock.get(
+                            "universe_company",
+                            "",
+                        )
+
+                # ------------------------------------------
+                # REASON FALLBACK
+                # ------------------------------------------
+
+                if (
+                    field
+                    == "selection_reason"
+                    and not value
+                ):
+
+                    value = stock.get(
+                        "reserve_reason",
+                        "",
+                    )
+
+                if value is None:
+
+                    value = ""
+
+                elif isinstance(
+                    value,
+                    float,
+                ):
+
+                    value = (
+                        f"{value:.2f}"
+                    )
+
+                item = QTableWidgetItem(
+                    str(value)
+                )
+
+                if (
+                    column_index
+                    in numeric_columns
+                ):
+
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignCenter
+                    )
+
+                self.table.setItem(
+
+                    row_index,
+
+                    column_index,
+
+                    item,
+
+                )
+
+        self.table.setSortingEnabled(
+            True
+        )
+
+
+    # ======================================================
     # POPULATE GLOBAL TOP-30 TABLE
     # ======================================================
 
@@ -1184,6 +1586,62 @@ class ResearchRadar(QWidget):
         )
 
         self.table.clearContents()
+
+        columns = [
+
+            "Rank",
+            "Symbol",
+            "Category",
+            "Company",
+            "Sector",
+            "Fundamental",
+            "Technical",
+            "Composite",
+            "Readiness",
+            "Market Health",
+            "Confidence",
+            "Coverage",
+            "Data Status",
+            "Classification",
+
+        ]
+
+        self.table.setColumnCount(
+            len(columns)
+        )
+
+        self.table.setHorizontalHeaderLabels(
+            columns
+        )
+
+        column_widths = {
+
+            0: 55,
+            1: 100,
+            2: 90,
+            3: 190,
+            4: 145,
+            5: 105,
+            6: 95,
+            7: 95,
+            8: 95,
+            9: 110,
+            10: 95,
+            11: 90,
+            12: 110,
+            13: 210,
+
+        }
+
+        for (
+            column_index,
+            column_width,
+        ) in column_widths.items():
+
+            self.table.setColumnWidth(
+                column_index,
+                column_width,
+            )
 
         self.table.setRowCount(
             len(ranked)
