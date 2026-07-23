@@ -575,11 +575,648 @@ class PortfolioStateService:
             ]
         )
 
+        # ==================================================
+        # POST-BUY MARKET VALUATION
+        #
+        # A confirmed execution price is the best available
+        # market mark at the instant the BUY is confirmed.
+        #
+        # Preserve existing valid marks for positions that
+        # were not purchased in this operation, and replace
+        # marks only for symbols with confirmed BUYs.
+        #
+        # mark_to_market() remains the single authoritative
+        # implementation for current value, portfolio value,
+        # actual weights and drift.
+        # ==================================================
+
+        valuation_price_map = {}
+
+        for (
+            position_symbol,
+            position,
+        ) in positions.items():
+
+            if not isinstance(
+                position,
+                dict,
+            ):
+
+                continue
+
+            existing_price = (
+                self._safe_float(
+                    position.get(
+                        "current_price",
+                        0.0,
+                    ),
+                    0.0,
+                )
+            )
+
+            if existing_price > 0:
+
+                valuation_price_map[
+                    position_symbol
+                ] = existing_price
+
+        for transaction in transactions:
+
+            if not isinstance(
+                transaction,
+                dict,
+            ):
+
+                continue
+
+            transaction_symbol = (
+                self._normalize_symbol(
+                    transaction.get(
+                        "symbol"
+                    )
+                )
+            )
+
+            transaction_price = (
+                self._safe_float(
+                    transaction.get(
+                        "price",
+                        0.0,
+                    ),
+                    0.0,
+                )
+            )
+
+            if (
+                transaction_symbol
+                and transaction_price > 0
+            ):
+
+                valuation_price_map[
+                    transaction_symbol
+                ] = transaction_price
+
+        updated = self.mark_to_market(
+
+            state=
+                updated,
+
+            price_map=
+                valuation_price_map,
+
+        )
+
         updated[
             "updated_at"
         ] = self._timestamp()
 
         return updated
+
+    # ======================================================
+    # CORRECT CONFIRMED BUY
+    #
+    # Controlled accounting correction for an already
+    # confirmed BUY transaction.
+    #
+    # This is NOT a new investment transaction and is NOT
+    # a rebalance action.
+    #
+    # The selected BUY is corrected in place so transaction
+    # history reflects economic truth. A separate CORRECTION
+    # audit entry preserves the previous and corrected values.
+    #
+    # Position quantity / cost are rebuilt from all BUY
+    # transactions for the symbol so this remains safe when
+    # later SIP purchases exist.
+    # ======================================================
+
+    def correct_confirmed_buy(
+        self,
+        state,
+        transaction_index,
+        quantity,
+        price,
+        correction_date=None,
+        reason="DATA_ENTRY_CORRECTION",
+    ):
+
+        if not isinstance(
+            state,
+            dict,
+        ):
+
+            raise TypeError(
+                "state must be a dictionary"
+            )
+
+        updated = deepcopy(
+            state
+        )
+
+        transactions = updated.get(
+            "transactions",
+            [],
+        )
+
+        if not isinstance(
+            transactions,
+            list,
+        ):
+
+            raise TypeError(
+                "state transactions must be a list"
+            )
+
+        try:
+
+            transaction_index = int(
+                transaction_index
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
+            raise ValueError(
+                "transaction_index must be an integer"
+            )
+
+        if (
+            transaction_index < 0
+            or transaction_index >= len(
+                transactions
+            )
+        ):
+
+            raise ValueError(
+                "transaction_index is out of range"
+            )
+
+        original = transactions[
+            transaction_index
+        ]
+
+        if not isinstance(
+            original,
+            dict,
+        ):
+
+            raise ValueError(
+                "Selected transaction is invalid"
+            )
+
+        if str(
+            original.get(
+                "type",
+                "",
+            )
+        ).strip().upper() != "BUY":
+
+            raise ValueError(
+                "Only BUY transactions can be corrected"
+            )
+
+        symbol = self._normalize_symbol(
+            original.get(
+                "symbol"
+            )
+        )
+
+        if not symbol:
+
+            raise ValueError(
+                "Selected BUY has no valid symbol"
+            )
+
+        positions = updated.get(
+            "positions",
+            {},
+        )
+
+        if (
+            not isinstance(
+                positions,
+                dict,
+            )
+            or symbol not in positions
+        ):
+
+            raise ValueError(
+                f"Portfolio position not found: {symbol}"
+            )
+
+        quantity = int(
+            self._safe_float(
+                quantity,
+                -1.0,
+            )
+        )
+
+        price = self._safe_float(
+            price,
+            -1.0,
+        )
+
+        if quantity < 0:
+
+            raise ValueError(
+                "Corrected quantity cannot be negative"
+            )
+
+        if (
+            quantity > 0
+            and price <= 0
+        ):
+
+            raise ValueError(
+                "Corrected BUY price must be positive"
+            )
+
+        if (
+            quantity == 0
+            and price < 0
+        ):
+
+            raise ValueError(
+                "Corrected BUY price cannot be negative"
+            )
+
+        old_quantity = int(
+            self._safe_float(
+                original.get(
+                    "quantity",
+                    0,
+                ),
+                0.0,
+            )
+        )
+
+        old_price = self._safe_float(
+            original.get(
+                "price",
+                0.0,
+            ),
+            0.0,
+        )
+
+        old_amount = self._safe_float(
+            original.get(
+                "amount",
+                (
+                    old_quantity
+                    * old_price
+                ),
+            ),
+            0.0,
+        )
+
+        new_amount = (
+            quantity
+            * price
+        )
+
+        cash_delta = (
+            old_amount
+            - new_amount
+        )
+
+        current_cash = self._safe_float(
+            updated.get(
+                "cash_balance",
+                0.0,
+            ),
+            0.0,
+        )
+
+        new_cash = (
+            current_cash
+            + cash_delta
+        )
+
+        if new_cash < -0.01:
+
+            raise ValueError(
+                "Correction requires more cash than "
+                "the portfolio currently holds"
+            )
+
+        timestamp = (
+            correction_date
+            or self._timestamp()
+        )
+
+        before = {
+
+            "quantity":
+                old_quantity,
+
+            "price":
+                round(
+                    old_price,
+                    2,
+                ),
+
+            "amount":
+                round(
+                    old_amount,
+                    2,
+                ),
+
+        }
+
+        after = {
+
+            "quantity":
+                quantity,
+
+            "price":
+                round(
+                    price,
+                    2,
+                ),
+
+            "amount":
+                round(
+                    new_amount,
+                    2,
+                ),
+
+        }
+
+        original[
+            "quantity"
+        ] = quantity
+
+        original[
+            "price"
+        ] = round(
+            price,
+            2,
+        )
+
+        original[
+            "amount"
+        ] = round(
+            new_amount,
+            2,
+        )
+
+        original[
+            "corrected_at"
+        ] = timestamp
+
+        # --------------------------------------------------
+        # REBUILD AUTHORITATIVE POSITION COST FROM ALL BUYS
+        # --------------------------------------------------
+
+        rebuilt_quantity = 0
+        rebuilt_cost = 0.0
+        last_transaction_at = None
+
+        for transaction in transactions:
+
+            if not isinstance(
+                transaction,
+                dict,
+            ):
+
+                continue
+
+            if str(
+                transaction.get(
+                    "type",
+                    "",
+                )
+            ).strip().upper() != "BUY":
+
+                continue
+
+            transaction_symbol = (
+                self._normalize_symbol(
+                    transaction.get(
+                        "symbol"
+                    )
+                )
+            )
+
+            if transaction_symbol != symbol:
+
+                continue
+
+            transaction_quantity = int(
+                self._safe_float(
+                    transaction.get(
+                        "quantity",
+                        0,
+                    ),
+                    0.0,
+                )
+            )
+
+            transaction_price = (
+                self._safe_float(
+                    transaction.get(
+                        "price",
+                        0.0,
+                    ),
+                    0.0,
+                )
+            )
+
+            if (
+                transaction_quantity < 0
+                or (
+                    transaction_quantity > 0
+                    and transaction_price <= 0
+                )
+            ):
+
+                raise ValueError(
+                    f"Invalid BUY history for {symbol}"
+                )
+
+            rebuilt_quantity += (
+                transaction_quantity
+            )
+
+            rebuilt_cost += (
+                transaction_quantity
+                * transaction_price
+            )
+
+            transaction_timestamp = (
+                transaction.get(
+                    "timestamp"
+                )
+            )
+
+            if transaction_timestamp:
+
+                last_transaction_at = (
+                    transaction_timestamp
+                )
+
+        position = positions[
+            symbol
+        ]
+
+        existing_market_price = (
+            self._safe_float(
+                position.get(
+                    "current_price",
+                    0.0,
+                ),
+                0.0,
+            )
+        )
+
+        position[
+            "quantity"
+        ] = rebuilt_quantity
+
+        position[
+            "invested_cost"
+        ] = round(
+            rebuilt_cost,
+            2,
+        )
+
+        position[
+            "average_cost"
+        ] = round(
+
+            (
+                rebuilt_cost
+                / rebuilt_quantity
+            )
+
+            if rebuilt_quantity > 0
+
+            else 0.0,
+
+            4,
+
+        )
+
+        position[
+            "last_transaction_at"
+        ] = last_transaction_at
+
+        updated[
+            "cash_balance"
+        ] = round(
+            max(
+                new_cash,
+                0.0,
+            ),
+            2,
+        )
+
+        audit_entry = {
+
+            "type":
+                "CORRECTION",
+
+            "symbol":
+                symbol,
+
+            "source":
+                "PURCHASE_ENTRY_CORRECTION",
+
+            "reason":
+                str(
+                    reason
+                    or "DATA_ENTRY_CORRECTION"
+                ),
+
+            "corrected_transaction_index":
+                transaction_index,
+
+            "before":
+                before,
+
+            "after":
+                after,
+
+            "cash_delta":
+                round(
+                    cash_delta,
+                    2,
+                ),
+
+            "timestamp":
+                timestamp,
+
+        }
+
+        transactions.append(
+            audit_entry
+        )
+
+        updated[
+            "transaction_count"
+        ] = len(
+            transactions
+        )
+
+        updated[
+            "updated_at"
+        ] = self._timestamp()
+
+        # Preserve market valuation independently from
+        # corrected purchase economics.
+
+        valuation_price_map = {}
+
+        for (
+            position_symbol,
+            position_row,
+        ) in positions.items():
+
+            if not isinstance(
+                position_row,
+                dict,
+            ):
+
+                continue
+
+            market_price = (
+                self._safe_float(
+                    position_row.get(
+                        "current_price",
+                        0.0,
+                    ),
+                    0.0,
+                )
+            )
+
+            if market_price > 0:
+
+                valuation_price_map[
+                    position_symbol
+                ] = market_price
+
+        if (
+            existing_market_price > 0
+        ):
+
+            valuation_price_map[
+                symbol
+            ] = existing_market_price
+
+        updated = self.mark_to_market(
+
+            state=
+                updated,
+
+            price_map=
+                valuation_price_map,
+
+        )
+
+        return updated
+
 
     def add_cash(
         self,

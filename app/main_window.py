@@ -9,6 +9,7 @@ from app.screens.sidebar import Sidebar
 from app.screens.dashboard import Dashboard
 from app.screens.stock_explorer import StockExplorer
 from app.screens.research_radar import ResearchRadar
+from app.screens.portfolio import Portfolio
 
 
 class MainWindow(QMainWindow):
@@ -35,10 +36,15 @@ class MainWindow(QMainWindow):
         self.dashboard = Dashboard()
         self.stock_explorer = StockExplorer()
         self.research_radar = ResearchRadar()
+        self.portfolio = Portfolio(
+            alpha12_provider=
+                self._current_alpha12
+        )
 
         self.pages.addWidget(self.dashboard)
         self.pages.addWidget(self.stock_explorer)
         self.pages.addWidget(self.research_radar)
+        self.pages.addWidget(self.portfolio)
 
         # ---------------- Layout ----------------
 
@@ -58,3 +64,37 @@ class MainWindow(QMainWindow):
         self.sidebar.research_btn.clicked.connect(
             lambda: self.pages.setCurrentWidget(self.research_radar)
         )
+        self.sidebar.portfolio_btn.clicked.connect(
+            lambda: self.pages.setCurrentWidget(self.portfolio)
+        )
+
+    def _current_alpha12(
+        self,
+    ):
+
+        result = getattr(
+            self.research_radar,
+            "last_result",
+            None,
+        )
+
+        if not isinstance(
+            result,
+            dict,
+        ):
+
+            return []
+
+        alpha12 = result.get(
+            "alpha12",
+            [],
+        )
+
+        if not isinstance(
+            alpha12,
+            list,
+        ):
+
+            return []
+
+        return alpha12

@@ -425,6 +425,137 @@ class PortfolioOrchestrationService:
         }
 
     # ======================================================
+    # CORRECT CONFIRMED BUY
+    #
+    # CONTROLLED WRITE OPERATION
+    #
+    # Corrects one specific historical BUY execution and
+    # persists the resulting authoritative portfolio state.
+    #
+    # This is an accounting correction only.
+    # It is NOT a rebalance, SIP, BUY or SELL decision.
+    # ======================================================
+
+    def correct_confirmed_buy(
+        self,
+        transaction_index,
+        quantity,
+        price,
+        correction_date=None,
+        reason="DATA_ENTRY_CORRECTION",
+        save=True,
+        path=None,
+    ):
+
+        load_result = (
+            self.state_service
+            .load_state(
+                path=
+                    path
+            )
+        )
+
+        if not isinstance(
+            load_result,
+            dict,
+        ):
+
+            raise ValueError(
+                "Invalid portfolio state load result"
+            )
+
+        if load_result.get(
+            "status"
+        ) != "OK":
+
+            raise ValueError(
+                load_result.get(
+                    "error",
+                    "No active portfolio state found",
+                )
+            )
+
+        state = load_result.get(
+            "state"
+        )
+
+        if not isinstance(
+            state,
+            dict,
+        ):
+
+            raise ValueError(
+                "No valid portfolio state found"
+            )
+
+        updated_state = (
+            self.state_service
+            .correct_confirmed_buy(
+
+                state=
+                    state,
+
+                transaction_index=
+                    transaction_index,
+
+                quantity=
+                    quantity,
+
+                price=
+                    price,
+
+                correction_date=
+                    correction_date,
+
+                reason=
+                    reason,
+
+            )
+        )
+
+        save_result = None
+
+        if save:
+
+            save_result = (
+                self.state_service
+                .save_state(
+
+                    state=
+                        updated_state,
+
+                    path=
+                        path,
+
+                )
+            )
+
+        return {
+
+            "status":
+                "OK",
+
+            "mode":
+                "PURCHASE_ENTRY_CORRECTION",
+
+            "corrected":
+                True,
+
+            "transaction_index":
+                int(
+                    transaction_index
+                ),
+
+            "state":
+                updated_state,
+
+            "save_result":
+                save_result,
+
+        }
+
+
+    # ======================================================
     # PREPARE SMART SIP
     #
     # READ ONLY

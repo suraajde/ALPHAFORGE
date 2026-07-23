@@ -528,6 +528,73 @@ class PortfolioApplicationService:
             }
 
     # ======================================================
+    # CORRECT CONFIRMED BUY
+    #
+    # Public application boundary for controlled correction
+    # of one specific confirmed BUY transaction.
+    # ======================================================
+
+    def correct_confirmed_buy(
+        self,
+        transaction_index,
+        quantity,
+        price,
+        correction_date=None,
+        reason="DATA_ENTRY_CORRECTION",
+    ):
+
+        try:
+
+            return (
+                self.orchestrator
+                .correct_confirmed_buy(
+
+                    transaction_index=
+                        transaction_index,
+
+                    quantity=
+                        quantity,
+
+                    price=
+                        price,
+
+                    correction_date=
+                        correction_date,
+
+                    reason=
+                        reason,
+
+                    save=
+                        True,
+
+                    path=
+                        self.state_path,
+
+                )
+            )
+
+        except Exception as exc:
+
+            return {
+
+                "status":
+                    "ERROR",
+
+                "mode":
+                    "PURCHASE_ENTRY_CORRECTION",
+
+                "corrected":
+                    False,
+
+                "error":
+                    str(
+                        exc
+                    ),
+
+            }
+
+
+    # ======================================================
     # SMART SIP
     # ======================================================
 
@@ -812,6 +879,152 @@ class PortfolioApplicationService:
                     ),
 
             }
+
+    # ======================================================
+    # PURCHASE TRANSACTIONS
+    #
+    # READ ONLY
+    #
+    # Returns genuine BUY transactions for one portfolio
+    # symbol together with their authoritative transaction
+    # list indexes.
+    #
+    # CORRECTION audit entries are intentionally excluded.
+    # ======================================================
+
+    def get_purchase_transactions(
+        self,
+        symbol,
+    ):
+
+        symbol = self._normalize_symbol(
+            symbol
+        )
+
+        if not symbol:
+
+            return {
+
+                "status":
+                    "ERROR",
+
+                "error":
+                    "Invalid portfolio symbol",
+
+                "purchases":
+                    [],
+
+            }
+
+        loaded = self._require_state()
+
+        if loaded.get(
+            "status"
+        ) != "OK":
+
+            return {
+
+                "status":
+                    loaded.get(
+                        "status",
+                        "ERROR",
+                    ),
+
+                "error":
+                    loaded.get(
+                        "error",
+                        "Unable to load portfolio state",
+                    ),
+
+                "purchases":
+                    [],
+
+            }
+
+        state = loaded.get(
+            "state",
+            {},
+        )
+
+        transactions = state.get(
+            "transactions",
+            [],
+        )
+
+        if not isinstance(
+            transactions,
+            list,
+        ):
+
+            transactions = []
+
+        purchases = []
+
+        for (
+            transaction_index,
+            transaction,
+        ) in enumerate(
+            transactions
+        ):
+
+            if not isinstance(
+                transaction,
+                dict,
+            ):
+
+                continue
+
+            if str(
+                transaction.get(
+                    "type",
+                    "",
+                )
+            ).strip().upper() != "BUY":
+
+                continue
+
+            transaction_symbol = (
+                self._normalize_symbol(
+                    transaction.get(
+                        "symbol"
+                    )
+                )
+            )
+
+            if transaction_symbol != symbol:
+
+                continue
+
+            row = deepcopy(
+                transaction
+            )
+
+            row[
+                "transaction_index"
+            ] = transaction_index
+
+            purchases.append(
+                row
+            )
+
+        return {
+
+            "status":
+                "OK",
+
+            "symbol":
+                symbol,
+
+            "purchases":
+                purchases,
+
+            "purchase_count":
+                len(
+                    purchases
+                ),
+
+        }
+
 
     # ======================================================
     # UI-READY PORTFOLIO SUMMARY

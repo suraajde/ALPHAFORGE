@@ -21,3 +21,6 @@ Thumbs.db
 Desktop.ini
 # AlphaForge runtime cache
 data/cache/
+# AlphaForge local portfolio runtime state
+data/portfolio/
+local_backups/
