@@ -239,7 +239,7 @@ class PortfolioConstructionService:
                 or "UNKNOWN"
             )
 
-            quality = self._quality_score(
+            quality = self._conviction_score(
                 item
             )
 
