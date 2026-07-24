@@ -87,6 +87,117 @@ class PortfolioConstructionService:
             ),
         )
 
+    def _available_score(
+        self,
+        item,
+        keys,
+    ):
+        """
+        Return the first valid non-negative score found.
+
+        Allows portfolio construction to consume richer AlphaForge
+        scoring contracts while remaining backward-compatible with
+        historical selection payloads.
+        """
+
+        for key in keys:
+
+            value = item.get(
+                key
+            )
+
+            if value is None:
+                continue
+
+            return max(
+                0.0,
+                min(
+                    100.0,
+                    self._safe_float(
+                        value,
+                        0.0,
+                    ),
+                ),
+            )
+
+        return None
+
+    def _conviction_score(
+        self,
+        item,
+    ):
+        """
+        Build an investment-oriented portfolio conviction score.
+
+        Selection strength remains the anchor.
+
+        Fundamental quality receives more influence than market
+        readiness because Alpha 12 is a long-term investment
+        portfolio, not a trading portfolio.
+
+        Readiness is intentionally a secondary modifier so temporary
+        momentum weakness does not mechanically force strong
+        businesses out of meaningful portfolio allocation.
+        """
+
+        selection = self._quality_score(
+            item
+        )
+
+        fundamental = self._available_score(
+            item,
+            (
+                "fundamental_score",
+                "portfolio_fundamental_score",
+            ),
+        )
+
+        readiness = self._available_score(
+            item,
+            (
+                "readiness_score",
+                "portfolio_readiness_score",
+            ),
+        )
+
+        components = [
+            (
+                selection,
+                0.60,
+            ),
+        ]
+
+        if fundamental is not None:
+
+            components.append(
+                (
+                    fundamental,
+                    0.30,
+                )
+            )
+
+        if readiness is not None:
+
+            components.append(
+                (
+                    readiness,
+                    0.10,
+                )
+            )
+
+        total_weight = sum(
+            weight
+            for _, weight in components
+        )
+
+        if total_weight <= 0:
+            return 0.0
+
+        return sum(
+            score * weight
+            for score, weight in components
+        ) / total_weight
+
     def _sector_adjusted_scores(
         self,
         selected,
